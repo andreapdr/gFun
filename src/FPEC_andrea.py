@@ -36,7 +36,7 @@ def get_learner(calibrate=False, kernel='linear'):
     return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1)
 
 
-def get_params(dense=False):    # TODO kernel function could be usefull for meta-classifier
+def get_params(dense=False):    # TODO kernel function could be useful for meta-classifier
     if not op.optimc:
         return None
     c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
