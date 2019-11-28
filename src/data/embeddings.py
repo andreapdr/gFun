@@ -147,10 +147,13 @@ class FastTextWikiNews(Vectors):
 
     url_base = 'Cant auto-download MUSE embeddings'
     path = '/storage/andrea/FUNNELING/embeddings/wiki.multi.{}.vec'
+    _name = 'wiki.multi.{}.vec'
 
     def __init__(self, cache, language="en", **kwargs):
         url = self.url_base.format(language)
-        name = self.path.format(language)
+        # name = self.path.format(language)
+        name = cache + self._name.format(language)
+        # print(f'\n\nFASTEXTWIKI-NEW CLASS:\nurl = {url}\nname = {name}\ncache {cache}\nlanguage = {language}')
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
 
 

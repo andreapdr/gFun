@@ -1,11 +1,10 @@
 import numpy as np
 import time
 from data.embeddings import WordEmbeddings, embedding_matrix, WCE_matrix
-from scipy.sparse import issparse, csr_matrix
+from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
-# from sklearn.externals.joblib import Parallel, delayed
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -28,9 +27,13 @@ class TrivialRejector:
     def fit(self, X, y):
         self.cats = y.shape[1]
         return self
+
     def decision_function(self, X): return np.zeros((X.shape[0],self.cats))
+
     def predict(self, X): return np.zeros((X.shape[0],self.cats))
+
     def predict_proba(self, X): return np.zeros((X.shape[0],self.cats))
+
     def best_params(self): return {}
 
 
@@ -429,60 +432,6 @@ class PolylingualEmbeddingsClassifier:
         return self.model.best_params()
 
 
-class FunnellingEmbeddingPolylingualClassifier:
-    """ Simulated: this setting is merely for testing purposes, and is not realistic. We here assume to have a tfidf
-    vectorizer for the out-of-scope languages (which is not fair)."""
-    def __init__(self, first_tier_learner, embed_learner, meta_learner, wordembeddings_path, training_languages,
-                 first_tier_parameters = None, embed_parameters = None, meta_parameters = None, n_jobs=-1):
-
-        assert first_tier_learner.probability==True and embed_learner.probability==True, \
-            'both the first-tier classifier and the polyembedding classifier shoud allow calibration'
-
-        self.training_languages = training_languages
-
-        self.PLE = PolylingualEmbeddingsClassifier(wordembeddings_path, embed_learner,
-                                                   c_parameters=embed_parameters, n_jobs=n_jobs)
-
-        self.Funnelling = FunnellingPolylingualClassifier(first_tier_learner, meta_learner,
-                                                          first_tier_parameters=first_tier_parameters,
-                                                          meta_parameters=meta_parameters, n_jobs=n_jobs)
-        self.n_jobs = n_jobs
-
-    def vectorize(self, lX):
-        return {l:self.PLE.lang_tfidf[l].transform(lX[l]) for l in lX.keys()}
-
-    def fit(self, lX, ly):
-        """
-        :param lX: a dictionary {language_label: [list of preprocessed documents]}
-        :param ly: a dictionary {language_label: ndarray of shape (ndocs, ncats) binary labels}
-        :return:
-        """
-        self.PLE.fit_vectorizers(lX)
-        tinit = time.time()
-        lX = {l: lX[l] for l in lX.keys() if l in self.training_languages}
-        ly = {l: ly[l] for l in lX.keys() if l in self.training_languages}
-        self.PLE.fit(lX, ly)
-        lZ = self.PLE.predict_proba(lX)
-        self.Funnelling.fit(self.vectorize(lX),ly,lZ,ly)
-        self.time = time.time() - tinit
-        return self
-
-    def predict(self, lX):
-        """
-        :param lX: a dictionary {language_label: [list of preprocessed documents]}
-        """
-        lXin = {l: lX[l] for l in lX.keys() if l in self.training_languages}
-        lXout = {l: lX[l] for l in lX.keys() if l not in self.training_languages}
-
-        lZ = self.PLE.predict_proba(lXout)
-
-        return self.Funnelling.predict(self.vectorize(lXin), lZ)
-
-
-    def best_params(self):
-        return {'PLE':self.PLE.best_params(), 'Funnelling':self.Funnelling.best_params()}
-
-
 class AndreaCLF(FunnellingPolylingualClassifier):
     def __init__(self,
                  we_path,
@@ -509,6 +458,8 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         self.lang_tfidf = {}
         self.word_embeddings = {}
         self.supervised_embeddings = {}
+        self.model = None
+        self.time = None
 
     def vectorize(self, lX, prediction=False):
         langs = list(lX.keys())
@@ -571,7 +522,7 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         if supervised:
             for lang in languages:
                 S = WCE_matrix(lX, ly, lang)
-                S = np.squeeze(np.asarray(S))   # casting to ndarray to better visualize S while debugging
+                # S = np.squeeze(np.asarray(S))   # casting to ndarray to better visualize S while debugging
                 self.supervised_embeddings[lang] = S
                 if unsupervised:
                     _r[lang] = np.hstack((_r[lang], lX[lang].dot(S)))
@@ -590,32 +541,22 @@ class AndreaCLF(FunnellingPolylingualClassifier):
 
         Z, zy = self._get_zspace(lX, ly)
 
-        # Z vectors is concatenated with doc's embedding weighted sum
-        Z_embedded = dict()
-        l_weighted_em = self.embed(lX, ly,
-                                   unsupervised=self.config['unsupervised'],
-                                   supervised=self.config['supervised'])
-
         if self.config['supervised'] or self.config['unsupervised']:
+            # Z vectors is concatenated with doc's embedding weighted sum
+            Z_embedded = dict()
+            l_weighted_em = self.embed(lX, ly,
+                                       unsupervised=self.config['unsupervised'],
+                                       supervised=self.config['supervised'])
+
+            # stacking Z space horizontally with unsupervised (M) and/or supervised (F) embeddings
             for lang in list(lX.keys()):
                 Z_embedded[lang] = np.hstack((Z[lang], l_weighted_em[lang]))
             Z = Z_embedded
             del Z_embedded
 
-        # stacking Z_embedded space vertically
-        # _vertical_Z = np.vstack([Z_embedded[lang] for lang in self.languages])
-        # _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
+        # stacking Z space vertically
         _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
-
-        # zlangs = list(Z_embedded.keys())  # creo lista con embedding e poi faccio vstack su lista
-        # for i, lang in enumerate(zlangs):
-        #     if i == 0:
-        #         _vertical_Z = Z_embedded[lang]
-        #         _vertical_Zy = zy[lang]
-        #     else:
-        #         _vertical_Z = np.vstack((_vertical_Z, Z_embedded[lang]))
-        #         _vertical_Zy = np.vstack((_vertical_Zy, zy[lang]))
 
         print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
