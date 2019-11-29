@@ -8,6 +8,9 @@ from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from data.supervised import zscores
+from transformers.StandardizeTransformer import StandardizeTransformer
+
 
 def _sort_if_sparse(X):
     if issparse(X) and not X.has_sorted_indices:
@@ -210,13 +213,13 @@ class NaivePolylingualClassifier:
         for lang in langs:
             _sort_if_sparse(lX[lang])
 
-        # models = Parallel(n_jobs=self.n_jobs)\
-        #     (delayed(MonolingualClassifier(self.base_learner, parameters=self.parameters).fit)((lX[lang]),ly[lang]) for lang in langs)
-
-        models = [MonolingualClassifier(self.base_learner, parameters=self.parameters) for lang in langs]
-
-        for model, lang in zip(models, langs):
-            model.fit(lX[lang], ly[lang])
+        models = Parallel(n_jobs=self.n_jobs)\
+            (delayed(MonolingualClassifier(self.base_learner, parameters=self.parameters).fit)((lX[lang]),ly[lang]) for lang in langs)
+        #
+        # models = [MonolingualClassifier(self.base_learner, parameters=self.parameters) for lang in langs]
+        #
+        # for model, lang in zip(models, langs):
+        #     model.fit(lX[lang], ly[lang])
 
         self.model = {lang: models[i] for i, lang in enumerate(langs)}
         self.empty_categories = {lang:self.model[lang].empty_categories for lang in langs}
@@ -537,7 +540,7 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         self.vectorize(lX)
 
         for lang in self.languages:
-            print(lX[lang].shape)
+            print(f'{lang}->{lX[lang].shape}')
 
         Z, zy = self._get_zspace(lX, ly)
 
@@ -552,11 +555,14 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             for lang in list(lX.keys()):
                 Z_embedded[lang] = np.hstack((Z[lang], l_weighted_em[lang]))
             Z = Z_embedded
-            del Z_embedded
+
 
         # stacking Z space vertically
         _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
+
+        self.standardizer = StandardizeTransformer()
+        _vertical_Z  = self.standardizer.fit_predict(_vertical_Z)
 
         print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
@@ -578,10 +584,10 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             Z_embedded = dict()
             for lang in lX.keys():
                 Z_embedded[lang] = np.hstack((lZ[lang], l_weighted_em[lang]))
-                print(Z_embedded[lang].shape)
-            
-            return _joblib_transform_multiling(self.model.predict, Z_embedded, n_jobs=self.n_jobs)
-        
+            lZ = Z_embedded
+
         for lang in lZ.keys():
             print(lZ[lang].shape)
+            lZ[lang] = self.standardizer.predict(lZ[lang])
+
         return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)

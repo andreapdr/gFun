@@ -20,7 +20,7 @@ parser.add_option("-e", "--mode-embed", dest="mode_embed",
                   help="Set the embedding to be used [none, pretrained, supervised, both]", type=str, default='none')
 
 parser.add_option("-w", "--we-path", dest="we_path",
-                  help="Path to the polylingual word embeddings", default='/home/andreapdr/CLESA/embeddings/')
+                  help="Path to the polylingual word embeddings", default='../embeddings/')
 
 parser.add_option("-s", "--set_c", dest="set_c",type=float,
                   help="Set the C parameter", default=1)
@@ -33,7 +33,7 @@ parser.add_option("-j", "--n_jobs", dest="n_jobs",type=int,
 
 
 def get_learner(calibrate=False, kernel='linear'):
-    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1)
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced')
 
 
 def get_params(dense=False):    # TODO kernel function could be useful for meta-classifier
@@ -60,6 +60,7 @@ if __name__ == '__main__':
     data = MultilingualDataset.load(op.dataset)
     data.show_dimensions()
 
+    # data.set_view(languages=['en','it'], categories=list(range(10)))
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
 
@@ -96,8 +97,8 @@ if __name__ == '__main__':
     classifier = AndreaCLF(op.we_path,
                            config,
                            first_tier_learner=get_learner(calibrate=True),
-                           meta_learner=get_learner(calibrate=False),
-                           first_tier_parameters=get_params(dense=True),
+                           meta_learner=get_learner(calibrate=False, kernel='rbf'),
+                           first_tier_parameters=get_params(dense=False),
                            meta_parameters=get_params(dense=True),
                            n_jobs=op.n_jobs)
 

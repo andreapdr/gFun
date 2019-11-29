@@ -1,9 +1,9 @@
 from __future__ import print_function
-import ijson
+# import ijson
+# from ijson.common import ObjectBuilder
 import os, sys
 from os.path import join
 from bz2 import BZ2File
-from ijson.common import ObjectBuilder
 import pickle
 from util.file import list_dirs, list_files, makedirs_if_not_exist
 from itertools import islice

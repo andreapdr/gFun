@@ -5,7 +5,6 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from data.reader.jrcacquis_reader import *
 from data.languages import lang_set, NLTK_LANGMAP, RCV2_LANGS_WITH_NLTK_STEMMING
 from data.reader.rcv_reader import fetch_RCV1, fetch_RCV2, fetch_topic_hierarchy
-from data.reader.wikipedia_tools import fetch_wikipedia_multilingual, random_wiki_sample
 from data.text_preprocessor import NLTKStemTokenizer, preprocess_documents
 import pickle
 import numpy as np
@@ -357,6 +356,9 @@ def retrieve_jrc_documents_from_dataset(datasetpath, jrc_data_home, train_years,
 # Dataset Generators
 # ----------------------------------------------------------------------------------------------------------------------
 def prepare_jrc_datasets(jrc_data_home, wiki_data_home, langs, train_years, test_years, cat_policy, most_common_cat=-1, max_wiki=5000, run=0):
+    from data.reader.wikipedia_tools import fetch_wikipedia_multilingual, random_wiki_sample
+
+
     """
     Prepare all datasets for JRC-Acquis. The datasets include the "feature-independent" version, the
     "feature-yuxtaposed" version, the monolingual version for the UpperBound, and the processed wikipedia matrices.
@@ -439,6 +441,7 @@ def prepare_jrc_datasets(jrc_data_home, wiki_data_home, langs, train_years, test
 
 def prepare_rcv_datasets(outpath, rcv1_data_home, rcv2_data_home, wiki_data_home, langs,
                          train_for_lang=1000, test_for_lang=1000, max_wiki=5000, preprocess=True, run=0):
+    from data.reader.wikipedia_tools import fetch_wikipedia_multilingual, random_wiki_sample
     """
         Prepare all datasets for RCV1/RCV2. The datasets include the "feature-independent" version, the
         "feature-yuxtaposed" version, the monolingual version for the UpperBound, and the processed wikipedia matrices.
