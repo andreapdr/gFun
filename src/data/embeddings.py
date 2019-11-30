@@ -147,7 +147,7 @@ class FastTextWikiNews(Vectors):
 
     url_base = 'Cant auto-download MUSE embeddings'
     path = '/storage/andrea/FUNNELING/embeddings/wiki.multi.{}.vec'
-    _name = 'wiki.multi.{}.vec'
+    _name = '/embeddings/wiki.multi.{}.vec'
 
     def __init__(self, cache, language="en", **kwargs):
         url = self.url_base.format(language)
@@ -155,6 +155,30 @@ class FastTextWikiNews(Vectors):
         name = cache + self._name.format(language)
         # print(f'\n\nFASTEXTWIKI-NEW CLASS:\nurl = {url}\nname = {name}\ncache {cache}\nlanguage = {language}')
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
+
+
+class EmbeddingsAligned(Vectors):
+
+    def __init__(self, type, path, lang):
+
+        self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
+        # todo - rewrite as relative path
+        self.cache_path = '/home/andreapdr/CLESA/embeddings' if type == 'MUSE' else '/home/andreapdr/CLESA/embeddings_polyFASTTEXT'
+        self.path = path + self.name.format(lang)
+        assert os.path.exists(path), f'pre-trained vectors not found in {path}'
+        super(EmbeddingsAligned, self).__init__(self.path, cache=self.cache_path)
+
+    def vocabulary(self):
+        return set(self.stoi.keys())
+
+    def dim(self):
+        return self.dim
+
+    def extract(self, words):
+        source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.stoi)
+        extraction = torch.zeros((len(words), self.dim))
+        extraction[source_idx] = self.vectors[target_idx]
+        return extraction
 
 
 class FastTextMUSE(PretrainedEmbeddings):
@@ -179,12 +203,12 @@ class FastTextMUSE(PretrainedEmbeddings):
         return extraction
 
 
-def embedding_matrix(path, voc, lang):
+def embedding_matrix(type, path, voc, lang):
     vocabulary = np.asarray(list(zip(*sorted(voc.items(), key=lambda x:x[1])))[0])
 
     print('[embedding matrix]')
-    print(f'# [pretrained-matrix: FastTextMUSE {lang}]')
-    pretrained = FastTextMUSE(path, lang)
+    print(f'# [pretrained-matrix: {type} {lang}]')
+    pretrained = EmbeddingsAligned(type, path, lang)
     P = pretrained.extract(vocabulary).numpy()
     del pretrained
     print(f'[embedding matrix done] of shape={P.shape}\n')

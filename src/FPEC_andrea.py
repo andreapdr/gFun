@@ -17,10 +17,13 @@ parser.add_option("-o", "--output", dest="output",
                   help="Result file", type=str,  default='./results/results.csv')
 
 parser.add_option("-e", "--mode-embed", dest="mode_embed",
-                  help="Set the embedding to be used [none, pretrained, supervised, both]", type=str, default='none')
+                  help="Set the embedding to be used [none, unsupervised, supervised, both]", type=str, default='none')
 
 parser.add_option("-w", "--we-path", dest="we_path",
                   help="Path to the polylingual word embeddings", default='../embeddings/')
+
+parser.add_option('-t', "--we-type", dest="we_type", help="Aligned embeddings to use [FastText, MUSE]", type=str,
+                  default='FastText')
 
 parser.add_option("-s", "--set_c", dest="set_c",type=float,
                   help="Set the C parameter", default=1)
@@ -36,7 +39,7 @@ def get_learner(calibrate=False, kernel='linear'):
     return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced')
 
 
-def get_params(dense=False):    # TODO kernel function could be useful for meta-classifier
+def get_params(dense=False):
     if not op.optimc:
         return None
     c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
@@ -72,30 +75,36 @@ if __name__ == '__main__':
 
     # Embeddings and WCE config
     _available_mode = ['none', 'unsupervised', 'supervised', 'both']
-    assert op.mode_embed in _available_mode , f'{op.mode_embed} not in {_available_mode}'
+    _available_type = ['MUSE', 'FastText']
+    assert op.mode_embed in _available_mode, f'{op.mode_embed} not in {_available_mode}'
+    assert op.we_type in _available_type, f'{op.we_type} not in {_available_type}'
 
     if op.mode_embed == 'none':
         config = {'unsupervised': False,
-                    'supervised': False}
+                  'supervised': False,
+                  'we_type': None}
         _config_id = 'None'
     elif op.mode_embed == 'unsupervised':
         config = {'unsupervised': True,
-                  'supervised': False}
+                  'supervised': False,
+                  'we_type': op.we_type}
         _config_id = 'M'
     elif op.mode_embed == 'supervised':
         config = {'unsupervised': False,
-                  'supervised': True}
+                  'supervised': True,
+                  'we_type': None}
         _config_id = 'F'
     elif op.mode_embed == 'both':
         config = {'unsupervised': True,
-                  'supervised': True}
+                  'supervised': True,
+                  'we_type': op.we_type}
         _config_id = 'M_and_F'
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
-    classifier = AndreaCLF(op.we_path,
-                           config,
+    classifier = AndreaCLF(we_path=op.we_path,
+                           config=config,
                            first_tier_learner=get_learner(calibrate=True),
                            meta_learner=get_learner(calibrate=False, kernel='rbf'),
                            first_tier_parameters=get_params(dense=False),
@@ -114,5 +123,5 @@ if __name__ == '__main__':
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
         results.add_row(result_id, 'PolyEmbed_andrea', 'svm', _config_id, op.optimc, op.dataset.split('/')[-1],
-                        'not_binary', 'not_ablation', classifier.time, lang, macrof1, microf1, macrok, microk, 'nope')
+                        'not_binary', 'not_ablation', classifier.time, lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))

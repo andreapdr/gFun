@@ -7,8 +7,6 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-from data.supervised import zscores
 from transformers.StandardizeTransformer import StandardizeTransformer
 
 
@@ -444,7 +442,8 @@ class AndreaCLF(FunnellingPolylingualClassifier):
                  first_tier_parameters=None,
                  meta_parameters=None,
                  folded_projections=1,
-                 calmode='cal', n_jobs=-1):
+                 calmode='cal',
+                 n_jobs=-1):
 
         super().__init__(first_tier_learner,
                          meta_learner,
@@ -479,9 +478,8 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             self.languages.append(lang)
             tfidf_vectorizer.fit(lX[lang])
             lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            _sort_if_sparse(lX[lang])
             self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer # utile in fase di testing
+            self.lang_tfidf[lang] = tfidf_vectorizer
         return self
 
     # @override std class method
@@ -517,15 +515,13 @@ class AndreaCLF(FunnellingPolylingualClassifier):
 
         if unsupervised:
             for lang in languages:
-                # print('Test building embedding matrix FastTextMuse ...')
-                _, M = embedding_matrix(self.we_path, self.lang_word2idx[lang], lang)
+                _, M = embedding_matrix(self.config['we_type'], self.we_path, self.lang_word2idx[lang], lang)
                 self.word_embeddings[lang] = M
                 _r[lang] = lX[lang].dot(M)
 
         if supervised:
             for lang in languages:
                 S = WCE_matrix(lX, ly, lang)
-                # S = np.squeeze(np.asarray(S))   # casting to ndarray to better visualize S while debugging
                 self.supervised_embeddings[lang] = S
                 if unsupervised:
                     _r[lang] = np.hstack((_r[lang], lX[lang].dot(S)))
@@ -562,7 +558,7 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
 
         self.standardizer = StandardizeTransformer()
-        _vertical_Z  = self.standardizer.fit_predict(_vertical_Z)
+        _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
 
         print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
