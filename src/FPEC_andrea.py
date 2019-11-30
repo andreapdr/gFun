@@ -122,6 +122,6 @@ if __name__ == '__main__':
         macrof1, microf1, macrok, microk = l_eval[lang]
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
-        results.add_row(result_id, 'PolyEmbed_andrea', 'svm', _config_id, op.optimc, op.dataset.split('/')[-1],
+        results.add_row(result_id, 'PolyEmbed_andrea', 'svm', _config_id, config['we_type'], op.optimc, op.dataset.split('/')[-1],
                         'not_binary', 'not_ablation', classifier.time, lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))
