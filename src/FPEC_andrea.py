@@ -11,7 +11,8 @@ from sklearn.svm import SVC
 parser = OptionParser()
 
 parser.add_option("-d", "--dataset", dest="dataset",
-                  help="Path to the multilingual dataset processed and stored in .pickle format")
+                  help="Path to the multilingual dataset processed and stored in .pickle format",
+                  default="/home/moreo/CLESA/rcv2/rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle")
 
 parser.add_option("-o", "--output", dest="output",
                   help="Result file", type=str,  default='./results/results.csv')
@@ -23,7 +24,7 @@ parser.add_option("-w", "--we-path", dest="we_path",
                   help="Path to the polylingual word embeddings", default='../embeddings/')
 
 parser.add_option('-t', "--we-type", dest="we_type", help="Aligned embeddings to use [FastText, MUSE]", type=str,
-                  default='FastText')
+                  default='MUSE')
 
 parser.add_option("-s", "--set_c", dest="set_c",type=float,
                   help="Set the C parameter", default=1)
@@ -36,7 +37,7 @@ parser.add_option("-j", "--n_jobs", dest="n_jobs",type=int,
 
 
 def get_learner(calibrate=False, kernel='linear'):
-    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced')
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced', gamma='auto')
 
 
 def get_params(dense=False):
@@ -64,6 +65,7 @@ if __name__ == '__main__':
     data.show_dimensions()
 
     # data.set_view(languages=['en','it'], categories=list(range(10)))
+    # data.set_view(languages=['en','it'])
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
 
@@ -100,6 +102,10 @@ if __name__ == '__main__':
                   'we_type': op.we_type}
         _config_id = 'M_and_F'
 
+    ##### TODO - config dict is redundant - we have already op argparse ...
+    config['reduction'] = 'tSVD'
+    config['max_label_space'] = 50
+
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
@@ -114,7 +120,7 @@ if __name__ == '__main__':
     print('# Fitting ...')
     classifier.fit(lXtr, lytr)
 
-    print('# Evaluating ...')
+    print('\n# Evaluating ...')
     l_eval = evaluate_method(classifier, lXte, lyte)
 
     metrics = []

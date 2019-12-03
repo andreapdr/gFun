@@ -1,6 +1,6 @@
 from data.tsr_function__ import get_supervised_matrix, get_tsr_matrix, information_gain, chi_square
-# from util.common import *
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.manifold import TSNE
 import numpy as np
 
 
@@ -40,7 +40,7 @@ def supervised_embeddings_tsr(X,Y, tsr_function=information_gain, max_documents=
     return F
 
 
-def get_supervised_embeddings(X, Y, max_label_space=300, binary_structural_problems=-1, method='dotn', dozscore=True):
+def get_supervised_embeddings(X, Y, reduction, max_label_space=300, binary_structural_problems=-1, method='dotn', dozscore=True):
     print('computing supervised embeddings...')
 
     nC = Y.shape[1]
@@ -60,10 +60,21 @@ def get_supervised_embeddings(X, Y, max_label_space=300, binary_structural_probl
         F = zscores(F, axis=0)
 
     if nC > max_label_space:
-        print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
-              f'Applying PCA(n_components={max_label_space})')
-        pca = PCA(n_components=max_label_space)
-        F = pca.fit(F).transform(F)
+        if reduction == 'PCA':
+            print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
+                  f'Applying PCA(n_components={max_label_space})')
+            pca = PCA(n_components=max_label_space)
+            F = pca.fit(F).transform(F)
+        elif reduction == 'TSNE':
+            print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
+                  f'Applying t-SNE(n_components={max_label_space})')
+            tsne = TSNE(n_components=max_label_space)
+            F = tsne.fit(F).fit_transform(F)
+        elif reduction == 'tSVD':
+            print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
+                  f'Applying truncatedSVD(n_components={max_label_space})')
+            tSVD = TruncatedSVD(n_components=max_label_space)
+            F = tSVD.fit(F).fit_transform(F)
 
     return F
 

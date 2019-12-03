@@ -5,6 +5,7 @@ from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
 from data.supervised import get_supervised_embeddings
+from sklearn.decomposition import PCA
 
 
 class PretrainedEmbeddings(ABC):
@@ -157,16 +158,41 @@ class FastTextWikiNews(Vectors):
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
 
 
+# class EmbeddingsAligned(Vectors):
+#
+#     def __init__(self, type, path, lang):
+#
+#         self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
+#         # todo - rewrite as relative path
+#         self.cache_path = '/home/andreapdr/CLESA/embeddings' if type == 'MUSE' else '/home/andreapdr/CLESA/embeddings_polyFASTTEXT'
+#         self.path = path + self.name.format(lang)
+#         assert os.path.exists(path), f'pre-trained vectors not found in {path}'
+#         super(EmbeddingsAligned, self).__init__(self.path, cache=self.cache_path)
+#         # self.vectors = self.extract(voc)
+#
+#     def vocabulary(self):
+#         return set(self.stoi.keys())
+#
+#     def dim(self):
+#         return self.dim
+#
+#     def extract(self, words):
+#         source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.stoi)
+#         extraction = torch.zeros((len(words), self.dim))
+#         extraction[source_idx] = self.vectors[target_idx]
+#         return extraction
+
+
 class EmbeddingsAligned(Vectors):
 
-    def __init__(self, type, path, lang):
-
-        self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
+    def __init__(self, type, path, lang, voc):
         # todo - rewrite as relative path
+        self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
         self.cache_path = '/home/andreapdr/CLESA/embeddings' if type == 'MUSE' else '/home/andreapdr/CLESA/embeddings_polyFASTTEXT'
         self.path = path + self.name.format(lang)
         assert os.path.exists(path), f'pre-trained vectors not found in {path}'
         super(EmbeddingsAligned, self).__init__(self.path, cache=self.cache_path)
+        self.vectors = self.extract(voc)
 
     def vocabulary(self):
         return set(self.stoi.keys())
@@ -203,20 +229,69 @@ class FastTextMUSE(PretrainedEmbeddings):
         return extraction
 
 
-def embedding_matrix(type, path, voc, lang):
-    vocabulary = np.asarray(list(zip(*sorted(voc.items(), key=lambda x:x[1])))[0])
+class StorageEmbeddings:
+    def __init__(self, path):
+        self.path = path
+        self.lang_U = dict()
+        self.lang_S = dict()
 
-    print('[embedding matrix]')
-    print(f'# [pretrained-matrix: {type} {lang}]')
-    pretrained = EmbeddingsAligned(type, path, lang)
-    P = pretrained.extract(vocabulary).numpy()
-    del pretrained
-    print(f'[embedding matrix done] of shape={P.shape}\n')
+    def _add_embeddings_unsupervised(self, type, docs, vocs):
+        for lang in docs.keys():
+            print(f'# [unsupervised-matrix {type}] for {lang}')
+            voc = np.asarray(list(zip(*sorted(vocs[lang].items(), key=lambda x: x[1])))[0])
+            self.lang_U[lang] = EmbeddingsAligned(type, self.path, lang, voc).vectors
+            print(f'Matrix U (weighted sum) of shape {self.lang_U[lang].shape}\n')
+        return
 
-    return vocabulary, P
+    def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space):
+        for lang in docs.keys():
+            print(f'# [supervised-matrix] for {lang}')
+            # should also pass max_label_space and reduction techniques
+            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space)
+            print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
+        return
+
+    def _concatenate_embeddings(self, docs):
+        _r = dict()
+        for lang in self.lang_U.keys():
+            _r[lang] = np.hstack((docs[lang].dot(self.lang_U[lang]), docs[lang].dot(self.lang_S[lang])))
+        return _r
+
+    def fit(self, config, docs, vocs, labels):
+        if config['unsupervised']:
+            self._add_embeddings_unsupervised(config['we_type'], docs, vocs)
+        if config['supervised']:
+            self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'])
+        return self
+
+    def predict(self, config, docs):
+        if config['supervised'] and config['unsupervised']:
+            return self._concatenate_embeddings(docs)
+        elif config['supervised']:
+            _r = dict()
+            for lang in docs.keys():
+                _r[lang] = docs[lang].dot(self.lang_S[lang])
+        else:
+            _r = dict()
+            for lang in docs.keys():
+                _r[lang] = docs[lang].dot(self.lang_U[lang])
+        return _r
 
 
-def WCE_matrix(Xtr, Ytr, lang):
+# def embedding_matrix(type, path, voc, lang):
+#     vocabulary = np.asarray(list(zip(*sorted(voc.items(), key=lambda x: x[1])))[0])
+#
+#     print('[embedding matrix]')
+#     print(f'# [pretrained-matrix: {type} {lang}]')
+#     pretrained = EmbeddingsAligned(type, path, lang)
+#     P = pretrained.extract(vocabulary).numpy()
+#     del pretrained
+#     print(f'[embedding matrix done] of shape={P.shape}\n')
+#
+#     return vocabulary, P
+
+
+def WCE_matrix(Xtr, Ytr, lang, reduction=None, n_components=50):
     print('\n# [supervised-matrix]')
     S = get_supervised_embeddings(Xtr[lang], Ytr[lang])
     print(f'[embedding matrix done] of shape={S.shape}\n')
