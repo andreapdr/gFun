@@ -40,8 +40,12 @@ def supervised_embeddings_tsr(X,Y, tsr_function=information_gain, max_documents=
     return F
 
 
-def get_supervised_embeddings(X, Y, reduction, max_label_space=300, binary_structural_problems=-1, method='dotn', dozscore=True):
-    print('computing supervised embeddings...')
+def get_supervised_embeddings(X, Y, reduction, max_label_space=300, lang='None', binary_structural_problems=-1, method='dotn', dozscore=True):
+    if max_label_space == 'optimal':
+        max_label_space = 0
+
+    if max_label_space != 0:
+        print('computing supervised embeddings...')
 
     nC = Y.shape[1]
     if nC==2 and binary_structural_problems > nC:
@@ -60,21 +64,40 @@ def get_supervised_embeddings(X, Y, reduction, max_label_space=300, binary_struc
         F = zscores(F, axis=0)
 
     if nC > max_label_space:
+        # TODO testing optimal max_label_space
         if reduction == 'PCA':
+            if max_label_space == 0:
+                pca = PCA(n_components=Y.shape[1])
+                pca = pca.fit(F)
+                return pca.explained_variance_ratio_
+
             print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
                   f'Applying PCA(n_components={max_label_space})')
             pca = PCA(n_components=max_label_space)
-            F = pca.fit(F).transform(F)
+            pca = pca.fit(F)
+
+            ########################################################
+            import matplotlib.pyplot as plt
+
+            plt.figure()
+            plt.plot(np.cumsum(pca.explained_variance_ratio_))
+            plt.xlabel('Number of Components')
+            plt.ylabel('Variance (%)')  #
+            plt.title(f'WCE Explained Variance {lang}')
+            plt.show()
+            ########################################################
+
+            F = pca.fit_transform(F)
         elif reduction == 'TSNE':
             print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
                   f'Applying t-SNE(n_components={max_label_space})')
             tsne = TSNE(n_components=max_label_space)
-            F = tsne.fit(F).fit_transform(F)
+            F = tsne.fit_transform(F)
         elif reduction == 'tSVD':
             print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
                   f'Applying truncatedSVD(n_components={max_label_space})')
             tSVD = TruncatedSVD(n_components=max_label_space)
-            F = tSVD.fit(F).fit_transform(F)
+            F = tSVD.fit_transform(F)
 
     return F
 

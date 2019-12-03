@@ -5,7 +5,6 @@ from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
 from data.supervised import get_supervised_embeddings
-from sklearn.decomposition import PCA
 
 
 class PretrainedEmbeddings(ABC):
@@ -244,10 +243,16 @@ class StorageEmbeddings:
         return
 
     def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space):
+        _optimal = dict()
+        # TODO testing optimal max_label_space
+        if max_label_space == 'optimal':
+            print('Computing optimal number of PCA components ...')
+            optimal_n = self.get_optimal_supervised_components(docs, labels)
+            max_label_space = optimal_n
+
         for lang in docs.keys():
             print(f'# [supervised-matrix] for {lang}')
-            # should also pass max_label_space and reduction techniques
-            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space)
+            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, lang)
             print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
         return
 
@@ -277,22 +282,19 @@ class StorageEmbeddings:
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
         return _r
 
+    def get_optimal_supervised_components(self, docs, labels):
+        _idx = []
+        for lang in docs.keys():
+            _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space='optimal').tolist()
 
-# def embedding_matrix(type, path, voc, lang):
-#     vocabulary = np.asarray(list(zip(*sorted(voc.items(), key=lambda x: x[1])))[0])
-#
-#     print('[embedding matrix]')
-#     print(f'# [pretrained-matrix: {type} {lang}]')
-#     pretrained = EmbeddingsAligned(type, path, lang)
-#     P = pretrained.extract(vocabulary).numpy()
-#     del pretrained
-#     print(f'[embedding matrix done] of shape={P.shape}\n')
-#
-#     return vocabulary, P
-
-
-def WCE_matrix(Xtr, Ytr, lang, reduction=None, n_components=50):
-    print('\n# [supervised-matrix]')
-    S = get_supervised_embeddings(Xtr[lang], Ytr[lang])
-    print(f'[embedding matrix done] of shape={S.shape}\n')
-    return S
+            for i in range(len(_r)-1, 1, -1):
+                # todo: if n_components (therfore #n labels) is not big enough every value will be smaller than the next one ...
+                ratio = _r[i]
+                next_ratio = _r[i-1]
+                delta = _r[i] - _r[i-1]
+                if delta > 0:
+                # if ratio < next_ratio:
+                    _idx.append(i)
+                    break
+        best_n = int(sum(_idx)/len(_idx))
+        return best_n

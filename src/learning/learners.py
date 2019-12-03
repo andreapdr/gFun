@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from data.embeddings import WordEmbeddings, WCE_matrix, StorageEmbeddings
+from data.embeddings import WordEmbeddings, StorageEmbeddings
 from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
@@ -492,43 +492,6 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         lZ = self._projection(self.doc_projector, lXtr)
 
         return lZ, lYtr
-
-    # def embed(self, lX, ly, unsupervised=False, supervised=False, prediction=False):
-    #     """
-    #     build embedding matrix for given language and returns its weighted sum wrt tf-idf score
-    #     """
-    #     _r = dict()
-    #     languages = list(lX.keys())
-    #
-    #     if prediction:
-    #         for lang in languages:
-    #             if unsupervised:    # If unsupervised embeddings ...
-    #                 M = self.word_embeddings[lang]
-    #                 if supervised:  # and also unsupervised --> get both (M) and (S) weighted sum matrices and hstack them
-    #                     S = self.supervised_embeddings[lang]
-    #                     _r[lang] = np.hstack((lX[lang].dot(M), lX[lang].dot(S)))
-    #                     continue
-    #                 _r[lang] = lX[lang].dot(M)  # if not supervised --> just get weighted sum of unsupervised (M) embeddings
-    #             else:   # If not unsupervised --> get (S) matrix and its weighted sum
-    #                 S = self.supervised_embeddings[lang]
-    #                 _r[lang] = lX[lang].dot(S)
-    #         return _r
-    #
-    #     if unsupervised:
-    #         for lang in languages:
-    #             _, M = embedding_matrix(self.config['we_type'], self.we_path, self.lang_word2idx[lang], lang)
-    #             self.word_embeddings[lang] = M
-    #             _r[lang] = lX[lang].dot(M)
-    #
-    #     if supervised:
-    #         for lang in languages:
-    #             S = WCE_matrix(lX, ly, lang)
-    #             self.supervised_embeddings[lang] = S
-    #             if unsupervised:
-    #                 _r[lang] = np.hstack((_r[lang], lX[lang].dot(S)))
-    #             else:
-    #                 _r[lang] = lX[lang].dot(S)
-    #     return _r
 
     # @override std class method
     def fit(self, lX, ly):
