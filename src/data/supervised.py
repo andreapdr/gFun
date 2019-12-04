@@ -40,7 +40,7 @@ def supervised_embeddings_tsr(X,Y, tsr_function=information_gain, max_documents=
     return F
 
 
-def get_supervised_embeddings(X, Y, reduction, max_label_space=300, lang='None', binary_structural_problems=-1, method='dotn', dozscore=True):
+def get_supervised_embeddings(X, Y, reduction, max_label_space=300, voc=None, lang='None', binary_structural_problems=-1, method='dotn', dozscore=True):
     if max_label_space == 'optimal':
         max_label_space = 0
 
@@ -63,6 +63,18 @@ def get_supervised_embeddings(X, Y, reduction, max_label_space=300, lang='None',
     if dozscore:
         F = zscores(F, axis=0)
 
+    # Dumping F-matrix for further studies
+    # TODO im not sure if voc.keys and F matrix indices are "aligned" correctly
+    dump_it = True
+    if dump_it:
+        with open(f'/home/andreapdr/funneling_pdr/src/dumps/WCE_{lang}.tsv', 'w') as outfile:
+            np.savetxt(outfile, F, delimiter='\t')
+        with open(f'/home/andreapdr/funneling_pdr/src/dumps/dict_WCE_{lang}.tsv', 'w') as outfile:
+            for token in voc.keys():
+                outfile.write(token+'\n')
+
+
+
     if nC > max_label_space:
         # TODO testing optimal max_label_space
         if reduction == 'PCA':
@@ -75,15 +87,6 @@ def get_supervised_embeddings(X, Y, reduction, max_label_space=300, lang='None',
                   f'Applying PCA(n_components={max_label_space})')
             pca = PCA(n_components=max_label_space)
             pca = pca.fit(F)
-            ########################################################
-            # import matplotlib.pyplot as plt
-            # plt.figure()
-            # plt.plot(np.cumsum(pca.explained_variance_ratio_))
-            # plt.xlabel('Number of Components')
-            # plt.ylabel('Variance (%)')  #
-            # plt.title(f'WCE Explained Variance {lang}')
-            # plt.show()
-            ########################################################
             F = pca.fit_transform(F)
         elif reduction == 'TSNE':
             print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '

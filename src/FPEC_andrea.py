@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     ##### TODO - config dict is redundant - we have already op argparse ...
     config['reduction'] = 'PCA'
-    config['max_label_space'] = 'optimal'
+    config['max_label_space'] = 300
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 

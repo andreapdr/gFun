@@ -217,7 +217,7 @@ class StorageEmbeddings:
             print(f'Matrix U (weighted sum) of shape {self.lang_U[lang].shape}\n')
         return
 
-    def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space):
+    def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space, voc):
         _optimal = dict()
         # TODO testing optimal max_label_space
         if max_label_space == 'optimal':
@@ -227,7 +227,7 @@ class StorageEmbeddings:
 
         for lang in docs.keys():
             print(f'# [supervised-matrix] for {lang}')
-            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, lang)
+            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, voc[lang], lang)
             print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
         return
 
@@ -241,7 +241,7 @@ class StorageEmbeddings:
         if config['unsupervised']:
             self._add_embeddings_unsupervised(config['we_type'], docs, vocs)
         if config['supervised']:
-            self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'])
+            self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'], vocs)
         return self
 
     def predict(self, config, docs):
@@ -269,10 +269,11 @@ class StorageEmbeddings:
 
         for lang in docs.keys():
             _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space='optimal').tolist()
-            plt.plot(np.cumsum(_r), label=lang)
+            _r = np.cumsum(_r)
+            plt.plot(_r, label=lang)
             for i in range(len(_r)-1, 1, -1):
                 # todo: if n_components (therfore #n labels) is not big enough every value will be smaller than the next one ...
-                delta = _r[i-1] - _r[i]
+                delta = _r[i] - _r[i-1]
                 if delta > 0:
                     _idx.append(i)
                     break
