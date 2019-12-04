@@ -157,31 +157,6 @@ class FastTextWikiNews(Vectors):
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
 
 
-# class EmbeddingsAligned(Vectors):
-#
-#     def __init__(self, type, path, lang):
-#
-#         self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
-#         # todo - rewrite as relative path
-#         self.cache_path = '/home/andreapdr/CLESA/embeddings' if type == 'MUSE' else '/home/andreapdr/CLESA/embeddings_polyFASTTEXT'
-#         self.path = path + self.name.format(lang)
-#         assert os.path.exists(path), f'pre-trained vectors not found in {path}'
-#         super(EmbeddingsAligned, self).__init__(self.path, cache=self.cache_path)
-#         # self.vectors = self.extract(voc)
-#
-#     def vocabulary(self):
-#         return set(self.stoi.keys())
-#
-#     def dim(self):
-#         return self.dim
-#
-#     def extract(self, words):
-#         source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.stoi)
-#         extraction = torch.zeros((len(words), self.dim))
-#         extraction[source_idx] = self.vectors[target_idx]
-#         return extraction
-
-
 class EmbeddingsAligned(Vectors):
 
     def __init__(self, type, path, lang, voc):
@@ -283,18 +258,26 @@ class StorageEmbeddings:
         return _r
 
     def get_optimal_supervised_components(self, docs, labels):
+        import matplotlib.pyplot as plt
+
         _idx = []
+
+        plt.figure(figsize=(15, 10))
+        plt.title(f'WCE Explained Variance')
+        plt.xlabel('Number of Components')
+        plt.ylabel('Variance (%)')
+
         for lang in docs.keys():
             _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space='optimal').tolist()
-
+            plt.plot(np.cumsum(_r), label=lang)
             for i in range(len(_r)-1, 1, -1):
                 # todo: if n_components (therfore #n labels) is not big enough every value will be smaller than the next one ...
-                ratio = _r[i]
-                next_ratio = _r[i-1]
-                delta = _r[i] - _r[i-1]
+                delta = _r[i-1] - _r[i]
                 if delta > 0:
-                # if ratio < next_ratio:
                     _idx.append(i)
                     break
         best_n = int(sum(_idx)/len(_idx))
+        plt.vlines(best_n, 0, 1, colors='r', label='optimal N')
+        plt.legend()
+        plt.show()
         return best_n

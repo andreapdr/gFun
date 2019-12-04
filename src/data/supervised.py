@@ -75,18 +75,15 @@ def get_supervised_embeddings(X, Y, reduction, max_label_space=300, lang='None',
                   f'Applying PCA(n_components={max_label_space})')
             pca = PCA(n_components=max_label_space)
             pca = pca.fit(F)
-
             ########################################################
-            import matplotlib.pyplot as plt
-
-            plt.figure()
-            plt.plot(np.cumsum(pca.explained_variance_ratio_))
-            plt.xlabel('Number of Components')
-            plt.ylabel('Variance (%)')  #
-            plt.title(f'WCE Explained Variance {lang}')
-            plt.show()
+            # import matplotlib.pyplot as plt
+            # plt.figure()
+            # plt.plot(np.cumsum(pca.explained_variance_ratio_))
+            # plt.xlabel('Number of Components')
+            # plt.ylabel('Variance (%)')  #
+            # plt.title(f'WCE Explained Variance {lang}')
+            # plt.show()
             ########################################################
-
             F = pca.fit_transform(F)
         elif reduction == 'TSNE':
             print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
