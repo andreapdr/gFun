@@ -1,4 +1,4 @@
-import os, sys
+import os
 from dataset_builder import MultilingualDataset
 from learning.learners import *
 from util.evaluation import *
@@ -21,7 +21,7 @@ parser.add_option("-e", "--mode-embed", dest="mode_embed",
                   help="Set the embedding to be used [none, unsupervised, supervised, both]", type=str, default='none')
 
 parser.add_option("-w", "--we-path", dest="we_path",
-                  help="Path to the polylingual word embeddings", default='../embeddings/')
+                  help="Path to the polylingual word embeddings", default='/home/andreapdr/CLESA/')
 
 parser.add_option('-t', "--we-type", dest="we_type", help="Aligned embeddings to use [FastText, MUSE]", type=str,
                   default='MUSE')
@@ -30,10 +30,20 @@ parser.add_option("-s", "--set_c", dest="set_c",type=float,
                   help="Set the C parameter", default=1)
 
 parser.add_option("-c", "--optimc", dest="optimc", action='store_true',
-                  help="Optimices hyperparameters", default=False)
+                  help="Optimize hyperparameters", default=False)
 
 parser.add_option("-j", "--n_jobs", dest="n_jobs",type=int,
                   help="Number of parallel jobs (default is -1, all)", default=-1)
+
+parser.add_option("-p", "--pca", dest="max_labels", type=int,
+                  help="If less than number of target classes, will apply PCA to supervised matrix. If set to 0 it"
+                       " will automatically search for the best number of components", default=300)
+
+parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
+                  help="If smaller than Unsupervised Dimension, will apply PCA to unsupervised matrix. If set to 0 it"
+                       " will automatically search for the best number of components", default=300)
+
+parser.add_option("-l", dest="lang", type=str)
 
 
 def get_learner(calibrate=False, kernel='linear'):
@@ -51,7 +61,6 @@ def get_params(dense=False):
 
 
 if __name__ == '__main__':
-
     (op, args) = parser.parse_args()
 
     assert exists(op.dataset), 'Unable to find file '+str(op.dataset)
@@ -64,8 +73,9 @@ if __name__ == '__main__':
     data = MultilingualDataset.load(op.dataset)
     data.show_dimensions()
 
-    # data.set_view(languages=['en','it'], categories=list(range(10)))
-    # data.set_view(languages=['en','it'])
+    data.set_view(languages=['en','it', 'pt', 'sv'], categories=list(range(10)))
+    # data.set_view(languages=[op.lang])
+    # data.set_view(categories=list(range(10)))
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
 
@@ -104,7 +114,9 @@ if __name__ == '__main__':
 
     ##### TODO - config dict is redundant - we have already op argparse ...
     config['reduction'] = 'PCA'
-    config['max_label_space'] = 300
+    config['max_label_space'] = op.max_labels
+    config['dim_reduction_unsupervised'] = op.max_labels_U
+    # config['plot_covariance_matrices'] = True
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
@@ -129,5 +141,5 @@ if __name__ == '__main__':
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
         results.add_row(result_id, 'PolyEmbed_andrea', 'svm', _config_id, config['we_type'], op.optimc, op.dataset.split('/')[-1],
-                        'not_binary', 'not_ablation', classifier.time, lang, macrof1, microf1, macrok, microk, '')
+                        classifier.time, lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))

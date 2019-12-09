@@ -5,7 +5,9 @@ from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
 from data.supervised import get_supervised_embeddings
-
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from util.decompositions import *
 
 class PretrainedEmbeddings(ABC):
 
@@ -110,10 +112,10 @@ class WordEmbeddings:
         # vocabulary is a set of terms to be kept
         active_vocabulary = sorted([w for w in vocabulary if w in self.worddim])
         lost = len(vocabulary)-len(active_vocabulary)
-        if lost>0: #some termr are missing, so it will be replaced by UNK
+        if lost > 0: #some terms are missing, so it will be replaced by UNK
             print('warning: missing {} terms for lang {}'.format(lost, self.lang))
         self.we = self.get_vectors(active_vocabulary)
-        assert self.we.shape[0]==len(active_vocabulary)
+        assert self.we.shape[0] == len(active_vocabulary)
         self.dimword={i:w for i,w in enumerate(active_vocabulary)}
         self.worddim={w:i for i,w in enumerate(active_vocabulary)}
         return self
@@ -153,7 +155,6 @@ class FastTextWikiNews(Vectors):
         url = self.url_base.format(language)
         # name = self.path.format(language)
         name = cache + self._name.format(language)
-        # print(f'\n\nFASTEXTWIKI-NEW CLASS:\nurl = {url}\nname = {name}\ncache {cache}\nlanguage = {language}')
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
 
 
@@ -171,14 +172,16 @@ class EmbeddingsAligned(Vectors):
     def vocabulary(self):
         return set(self.stoi.keys())
 
-    def dim(self):
-        return self.dim
-
     def extract(self, words):
         source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.stoi)
         extraction = torch.zeros((len(words), self.dim))
         extraction[source_idx] = self.vectors[target_idx]
         return extraction
+
+    def reduce(self, dim):
+        pca = PCA(n_components=dim)
+        self.vectors = pca.fit_transform(self.vectors)
+        return
 
 
 class FastTextMUSE(PretrainedEmbeddings):
@@ -209,26 +212,44 @@ class StorageEmbeddings:
         self.lang_U = dict()
         self.lang_S = dict()
 
-    def _add_embeddings_unsupervised(self, type, docs, vocs):
+    def _add_embeddings_unsupervised(self, type, docs, vocs, max_label_space=300):
         for lang in docs.keys():
+            nC = self.lang_U[lang].shape[1]
             print(f'# [unsupervised-matrix {type}] for {lang}')
             voc = np.asarray(list(zip(*sorted(vocs[lang].items(), key=lambda x: x[1])))[0])
             self.lang_U[lang] = EmbeddingsAligned(type, self.path, lang, voc).vectors
+            # if self.lang_U[lang].shape[1] > dim != 0:
+            #     print(f'unsupervised matrix has more dimensions ({self.lang_U[lang].shape[1]}) than'
+            #           f' the allowed limit {dim}. Applying PCA(n_components={dim})')
+            #     pca = PCA(n_components=dim)
+            #     self.lang_U[lang] = pca.fit_transform(self.lang_U[lang])
             print(f'Matrix U (weighted sum) of shape {self.lang_U[lang].shape}\n')
+        if max_label_space == 0:
+            print(f'Computing optimal number of PCA components along matrices U')
+            optimal_n = get_optimal_dim(self.lang_U, 'U')
+            self.lang_U = run_pca(optimal_n, self.lang_U)
+        elif max_label_space < nC:
+            self.lang_U = run_pca(max_label_space, self.lang_U)
+
         return
 
     def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space, voc):
-        _optimal = dict()
-        # TODO testing optimal max_label_space
-        if max_label_space == 'optimal':
-            print('Computing optimal number of PCA components ...')
-            optimal_n = self.get_optimal_supervised_components(docs, labels)
-            max_label_space = optimal_n
-
-        for lang in docs.keys():
+        # if max_label_space == 0:
+        #     print('Computing optimal number of PCA components along matrices S...')
+        #     optimal_n = self.get_optimal_supervised_components(docs, labels)
+        #     max_label_space = optimal_n
+        for lang in docs.keys():    # compute supervised matrices S - then apply PCA
+            nC = self.lang_S[lang].shape[1]
             print(f'# [supervised-matrix] for {lang}')
             self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, voc[lang], lang)
             print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
+
+        if max_label_space == 0:
+            optimal_n = get_optimal_dim(self.lang_S, 'S')
+            self.lang_S = run_pca(optimal_n, self.lang_S)
+        elif max_label_space < nC:
+            self.lang_S = run_pca(max_label_space, self.lang_S)
+
         return
 
     def _concatenate_embeddings(self, docs):
@@ -239,7 +260,7 @@ class StorageEmbeddings:
 
     def fit(self, config, docs, vocs, labels):
         if config['unsupervised']:
-            self._add_embeddings_unsupervised(config['we_type'], docs, vocs)
+            self._add_embeddings_unsupervised(config['we_type'], docs, vocs, config['dim_reduction_unsupervised'])
         if config['supervised']:
             self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'], vocs)
         return self
@@ -257,28 +278,58 @@ class StorageEmbeddings:
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
         return _r
 
-    def get_optimal_supervised_components(self, docs, labels):
-        import matplotlib.pyplot as plt
+    # @staticmethod
+    # def get_optimal_supervised_components(docs, labels):
+    #     optimal_n = get_optimal_dim(docs, 'S')
+    #     return optimal_n
+        # _idx = []
+        #
+        # plt.figure(figsize=(15, 10))
+        # plt.title(f'WCE Explained Variance')
+        # plt.xlabel('Number of Components')
+        # plt.ylabel('Variance (%)')
+        #
+        # for lang in docs.keys():
+        #     _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space=0).tolist()
+        #     _r = np.cumsum(_r)
+        #     plt.plot(_r, label=lang)
+        #     for i in range(len(_r)-1, 1, -1):
+        #         delta = _r[i] - _r[i-1]
+        #         if delta > 0:
+        #             _idx.append(i)
+        #             break
+        # best_n = max(_idx)
+        # plt.axvline(best_n, color='r', label='optimal N')
+        # plt.legend()
+        # plt.show()
+        # return best_n
+    #
+    # def get_optimal_unsupervised_components(self, type):
+    #     _idx = []
+    #
+    #     plt.figure(figsize=(15, 10))
+    #     plt.title(f'Unsupervised Embeddings {type} Explained Variance')
+    #     plt.xlabel('Number of Components')
+    #     plt.ylabel('Variance (%)')
+    #
+    #     for lang in self.lang_U.keys():
+    #         pca = PCA(n_components=self.lang_U[lang].shape[1])
+    #         pca.fit(self.lang_U[lang])
+    #         _r = pca.explained_variance_ratio_
+    #         _r = np.cumsum(_r)
+    #         plt.plot(_r, label=lang)
+    #         for i in range(len(_r) - 1, 1, -1):
+    #             delta = _r[i] - _r[i - 1]
+    #             if delta > 0:
+    #                 _idx.append(i)
+    #                 break
+    #     best_n = max(_idx)
+    #     plt.axvline(best_n, color='r', label='optimal N')
+    #     plt.legend()
+    #     plt.show()
+    #
+    #     for lang in self.lang_U.keys():
+    #         pca = PCA(n_components=best_n)
+    #         self.lang_U[lang] = pca.fit_transform(self.lang_U[lang])
+    #     return
 
-        _idx = []
-
-        plt.figure(figsize=(15, 10))
-        plt.title(f'WCE Explained Variance')
-        plt.xlabel('Number of Components')
-        plt.ylabel('Variance (%)')
-
-        for lang in docs.keys():
-            _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space='optimal').tolist()
-            _r = np.cumsum(_r)
-            plt.plot(_r, label=lang)
-            for i in range(len(_r)-1, 1, -1):
-                # todo: if n_components (therfore #n labels) is not big enough every value will be smaller than the next one ...
-                delta = _r[i] - _r[i-1]
-                if delta > 0:
-                    _idx.append(i)
-                    break
-        best_n = int(sum(_idx)/len(_idx))
-        plt.vlines(best_n, 0, 1, colors='r', label='optimal N')
-        plt.legend()
-        plt.show()
-        return best_n

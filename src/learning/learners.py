@@ -8,6 +8,7 @@ from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers.StandardizeTransformer import StandardizeTransformer
+from sklearn.decomposition import PCA
 
 
 def _sort_if_sparse(X):
@@ -453,13 +454,12 @@ class AndreaCLF(FunnellingPolylingualClassifier):
                          calmode,
                          n_jobs)
 
+        self.pca_independent_space = PCA(n_components=100)
         self.we_path = we_path
         self.config = config
         self.lang_word2idx = dict()
         self.languages = []
         self.lang_tfidf = {}
-        # self.word_embeddings = {}
-        # self.supervised_embeddings = {}
         self.embedding_space = None
         self.model = None
         self.time = None
@@ -515,6 +515,10 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
 
+        # todo testing ...
+        # self.pca_independent_space.fit(_vertical_Z)
+        # _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
+
         self.standardizer = StandardizeTransformer()
         _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
 
@@ -532,17 +536,14 @@ class AndreaCLF(FunnellingPolylingualClassifier):
 
         if self.config['supervised'] or self.config['unsupervised']:
             _embedding_space = self.embedding_space.predict(self.config, lX)
-            # l_weighted_em = self.embed(lX, ly,
-            #                            unsupervised=self.config['unsupervised'],
-            #                            supervised=self.config['supervised'],
-            #                            prediction=True)
-            # Z_embedded = dict()
+
             for lang in lX.keys():
                 lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
-            # lZ = Z_embedded
 
         for lang in lZ.keys():
             print(lZ[lang].shape)
+            # todo testing
+            # lZ[lang] = self.pca_independent_space.transform(lZ[lang])
             lZ[lang] = self.standardizer.predict(lZ[lang])
 
         return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
