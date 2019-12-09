@@ -1,13 +1,11 @@
 import os
 import pickle
-import numpy as np
 from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
 from data.supervised import get_supervised_embeddings
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 from util.decompositions import *
+
 
 class PretrainedEmbeddings(ABC):
 
@@ -112,7 +110,7 @@ class WordEmbeddings:
         # vocabulary is a set of terms to be kept
         active_vocabulary = sorted([w for w in vocabulary if w in self.worddim])
         lost = len(vocabulary)-len(active_vocabulary)
-        if lost > 0: #some terms are missing, so it will be replaced by UNK
+        if lost > 0:    # some terms are missing, so it will be replaced by UNK
             print('warning: missing {} terms for lang {}'.format(lost, self.lang))
         self.we = self.get_vectors(active_vocabulary)
         assert self.we.shape[0] == len(active_vocabulary)
@@ -134,12 +132,12 @@ class WordEmbeddings:
             'instances of {} expected'.format(WordEmbeddings.__name__)
 
         polywe = []
-        worddim={}
-        offset=0
+        worddim = {}
+        offset = 0
         for we in we_list:
             polywe.append(we.we)
             worddim.update({'{}::{}'.format(we.lang, w):d+offset for w,d in we.worddim.items()})
-            offset=len(worddim)
+            offset = len(worddim)
         polywe = np.vstack(polywe)
 
         return WordEmbeddings(lang='poly', we=polywe, worddim=worddim)
@@ -191,7 +189,6 @@ class FastTextMUSE(PretrainedEmbeddings):
         print(f'Loading fastText pretrained vectors from {path}')
         assert os.path.exists(path), print(f'pre-trained vectors not found in {path}')
         self.embed = FastTextWikiNews(path, lang, max_vectors=limit)
-        # print('Done')
 
     def vocabulary(self):
         return set(self.embed.stoi.keys())
@@ -277,59 +274,3 @@ class StorageEmbeddings:
             for lang in docs.keys():
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
         return _r
-
-    # @staticmethod
-    # def get_optimal_supervised_components(docs, labels):
-    #     optimal_n = get_optimal_dim(docs, 'S')
-    #     return optimal_n
-        # _idx = []
-        #
-        # plt.figure(figsize=(15, 10))
-        # plt.title(f'WCE Explained Variance')
-        # plt.xlabel('Number of Components')
-        # plt.ylabel('Variance (%)')
-        #
-        # for lang in docs.keys():
-        #     _r = get_supervised_embeddings(docs[lang], labels[lang], reduction='PCA', max_label_space=0).tolist()
-        #     _r = np.cumsum(_r)
-        #     plt.plot(_r, label=lang)
-        #     for i in range(len(_r)-1, 1, -1):
-        #         delta = _r[i] - _r[i-1]
-        #         if delta > 0:
-        #             _idx.append(i)
-        #             break
-        # best_n = max(_idx)
-        # plt.axvline(best_n, color='r', label='optimal N')
-        # plt.legend()
-        # plt.show()
-        # return best_n
-    #
-    # def get_optimal_unsupervised_components(self, type):
-    #     _idx = []
-    #
-    #     plt.figure(figsize=(15, 10))
-    #     plt.title(f'Unsupervised Embeddings {type} Explained Variance')
-    #     plt.xlabel('Number of Components')
-    #     plt.ylabel('Variance (%)')
-    #
-    #     for lang in self.lang_U.keys():
-    #         pca = PCA(n_components=self.lang_U[lang].shape[1])
-    #         pca.fit(self.lang_U[lang])
-    #         _r = pca.explained_variance_ratio_
-    #         _r = np.cumsum(_r)
-    #         plt.plot(_r, label=lang)
-    #         for i in range(len(_r) - 1, 1, -1):
-    #             delta = _r[i] - _r[i - 1]
-    #             if delta > 0:
-    #                 _idx.append(i)
-    #                 break
-    #     best_n = max(_idx)
-    #     plt.axvline(best_n, color='r', label='optimal N')
-    #     plt.legend()
-    #     plt.show()
-    #
-    #     for lang in self.lang_U.keys():
-    #         pca = PCA(n_components=best_n)
-    #         self.lang_U[lang] = pca.fit_transform(self.lang_U[lang])
-    #     return
-

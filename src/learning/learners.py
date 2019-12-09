@@ -8,7 +8,7 @@ from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers.StandardizeTransformer import StandardizeTransformer
-from sklearn.decomposition import PCA
+# from sklearn.decomposition import PCA
 
 
 def _sort_if_sparse(X):

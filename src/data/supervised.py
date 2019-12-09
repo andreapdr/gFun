@@ -1,7 +1,7 @@
 from data.tsr_function__ import get_supervised_matrix, get_tsr_matrix, information_gain, chi_square
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 import numpy as np
+# from sklearn.decomposition import PCA
+# from sklearn.manifold import TSNE
 
 
 def zscores(x, axis=0): #scipy.stats.zscores does not avoid division by 0, which can indeed occur
