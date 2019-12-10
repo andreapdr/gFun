@@ -194,6 +194,6 @@ def embedding_matrix(path, voc, lang):
 
 def WCE_matrix(Xtr, Ytr, lang):
     print('\n# [supervised-matrix]')
-    S = get_supervised_embeddings(Xtr[lang], Ytr[lang])
+    S = get_supervised_embeddings(Xtr[lang], Ytr[lang], max_label_space=50)
     print(f'[embedding matrix done] of shape={S.shape}\n')
     return S
