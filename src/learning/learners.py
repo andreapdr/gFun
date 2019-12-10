@@ -1,15 +1,14 @@
 import numpy as np
 import time
-from data.embeddings import WordEmbeddings, embedding_matrix, WCE_matrix
+from data.embeddings import WordEmbeddings, StorageEmbeddings
 from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-from data.supervised import zscores
 from transformers.StandardizeTransformer import StandardizeTransformer
+# from sklearn.decomposition import PCA
 
 
 def _sort_if_sparse(X):
@@ -444,7 +443,8 @@ class AndreaCLF(FunnellingPolylingualClassifier):
                  first_tier_parameters=None,
                  meta_parameters=None,
                  folded_projections=1,
-                 calmode='cal', n_jobs=-1):
+                 calmode='cal',
+                 n_jobs=-1):
 
         super().__init__(first_tier_learner,
                          meta_learner,
@@ -454,13 +454,13 @@ class AndreaCLF(FunnellingPolylingualClassifier):
                          calmode,
                          n_jobs)
 
+        self.pca_independent_space = PCA(n_components=100)
         self.we_path = we_path
         self.config = config
         self.lang_word2idx = dict()
         self.languages = []
         self.lang_tfidf = {}
-        self.word_embeddings = {}
-        self.supervised_embeddings = {}
+        self.embedding_space = None
         self.model = None
         self.time = None
 
@@ -479,9 +479,8 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             self.languages.append(lang)
             tfidf_vectorizer.fit(lX[lang])
             lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            _sort_if_sparse(lX[lang])
             self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer # utile in fase di testing
+            self.lang_tfidf[lang] = tfidf_vectorizer
         return self
 
     # @override std class method
@@ -493,45 +492,6 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         lZ = self._projection(self.doc_projector, lXtr)
 
         return lZ, lYtr
-
-    def embed(self, lX, ly, unsupervised=False, supervised=False, prediction=False):
-        """
-        build embedding matrix for given language and returns its weighted sum wrt tf-idf score
-        """
-        _r = dict()
-        languages = list(lX.keys())
-
-        if prediction:
-            for lang in languages:
-                if unsupervised:    # If unsupervised embeddings ...
-                    M = self.word_embeddings[lang]
-                    if supervised:  # and also unsupervised --> get both (M) and (S) weighted sum matrices and hstack them
-                        S = self.supervised_embeddings[lang]
-                        _r[lang] = np.hstack((lX[lang].dot(M), lX[lang].dot(S)))
-                        continue
-                    _r[lang] = lX[lang].dot(M)  # if not supervised --> just get weighted sum of unsupervised (M) embeddings
-                else:   # If not unsupervised --> get (S) matrix and its weighted sum 
-                    S = self.supervised_embeddings[lang]
-                    _r[lang] = lX[lang].dot(S)
-            return _r
-
-        if unsupervised:
-            for lang in languages:
-                # print('Test building embedding matrix FastTextMuse ...')
-                _, M = embedding_matrix(self.we_path, self.lang_word2idx[lang], lang)
-                self.word_embeddings[lang] = M
-                _r[lang] = lX[lang].dot(M)
-
-        if supervised:
-            for lang in languages:
-                S = WCE_matrix(lX, ly, lang)
-                # S = np.squeeze(np.asarray(S))   # casting to ndarray to better visualize S while debugging
-                self.supervised_embeddings[lang] = S
-                if unsupervised:
-                    _r[lang] = np.hstack((_r[lang], lX[lang].dot(S)))
-                else:
-                    _r[lang] = lX[lang].dot(S)
-        return _r
 
     # @override std class method
     def fit(self, lX, ly):
@@ -545,24 +505,22 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         Z, zy = self._get_zspace(lX, ly)
 
         if self.config['supervised'] or self.config['unsupervised']:
-            # Z vectors is concatenated with doc's embedding weighted sum
-            Z_embedded = dict()
-            l_weighted_em = self.embed(lX, ly,
-                                       unsupervised=self.config['unsupervised'],
-                                       supervised=self.config['supervised'])
-
-            # stacking Z space horizontally with unsupervised (M) and/or supervised (F) embeddings
-            for lang in list(lX.keys()):
-                Z_embedded[lang] = np.hstack((Z[lang], l_weighted_em[lang]))
-            Z = Z_embedded
-
+            self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
+            _embedding_space = self.embedding_space.predict(self.config, lX)
+            # h_stacking posterior probabilities with (U) and/or (S) matrices
+            for lang in self.languages:
+                Z[lang] = np.hstack((Z[lang], _embedding_space[lang]))
 
         # stacking Z space vertically
         _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
 
+        # todo testing ...
+        # self.pca_independent_space.fit(_vertical_Z)
+        # _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
+
         self.standardizer = StandardizeTransformer()
-        _vertical_Z  = self.standardizer.fit_predict(_vertical_Z)
+        _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
 
         print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
@@ -577,17 +535,15 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         lZ = self._projection(self.doc_projector, lX)
 
         if self.config['supervised'] or self.config['unsupervised']:
-            l_weighted_em = self.embed(lX, ly,
-                                       unsupervised=self.config['unsupervised'],
-                                       supervised=self.config['supervised'],
-                                       prediction=True)
-            Z_embedded = dict()
+            _embedding_space = self.embedding_space.predict(self.config, lX)
+
             for lang in lX.keys():
-                Z_embedded[lang] = np.hstack((lZ[lang], l_weighted_em[lang]))
-            lZ = Z_embedded
+                lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
 
         for lang in lZ.keys():
             print(lZ[lang].shape)
+            # todo testing
+            # lZ[lang] = self.pca_independent_space.transform(lZ[lang])
             lZ[lang] = self.standardizer.predict(lZ[lang])
 
         return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)

@@ -1,10 +1,10 @@
 import os
 import pickle
-import numpy as np
 from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
 from data.supervised import get_supervised_embeddings
+from util.decompositions import *
 
 
 class PretrainedEmbeddings(ABC):
@@ -110,10 +110,10 @@ class WordEmbeddings:
         # vocabulary is a set of terms to be kept
         active_vocabulary = sorted([w for w in vocabulary if w in self.worddim])
         lost = len(vocabulary)-len(active_vocabulary)
-        if lost>0: #some termr are missing, so it will be replaced by UNK
+        if lost > 0:    # some terms are missing, so it will be replaced by UNK
             print('warning: missing {} terms for lang {}'.format(lost, self.lang))
         self.we = self.get_vectors(active_vocabulary)
-        assert self.we.shape[0]==len(active_vocabulary)
+        assert self.we.shape[0] == len(active_vocabulary)
         self.dimword={i:w for i,w in enumerate(active_vocabulary)}
         self.worddim={w:i for i,w in enumerate(active_vocabulary)}
         return self
@@ -132,12 +132,12 @@ class WordEmbeddings:
             'instances of {} expected'.format(WordEmbeddings.__name__)
 
         polywe = []
-        worddim={}
-        offset=0
+        worddim = {}
+        offset = 0
         for we in we_list:
             polywe.append(we.we)
             worddim.update({'{}::{}'.format(we.lang, w):d+offset for w,d in we.worddim.items()})
-            offset=len(worddim)
+            offset = len(worddim)
         polywe = np.vstack(polywe)
 
         return WordEmbeddings(lang='poly', we=polywe, worddim=worddim)
@@ -147,14 +147,39 @@ class FastTextWikiNews(Vectors):
 
     url_base = 'Cant auto-download MUSE embeddings'
     path = '/storage/andrea/FUNNELING/embeddings/wiki.multi.{}.vec'
-    _name = 'wiki.multi.{}.vec'
+    _name = '/embeddings/wiki.multi.{}.vec'
 
     def __init__(self, cache, language="en", **kwargs):
         url = self.url_base.format(language)
         # name = self.path.format(language)
         name = cache + self._name.format(language)
-        # print(f'\n\nFASTEXTWIKI-NEW CLASS:\nurl = {url}\nname = {name}\ncache {cache}\nlanguage = {language}')
         super(FastTextWikiNews, self).__init__(name, cache=cache, url=url, **kwargs)
+
+
+class EmbeddingsAligned(Vectors):
+
+    def __init__(self, type, path, lang, voc):
+        # todo - rewrite as relative path
+        self.name = '/embeddings/wiki.multi.{}.vec' if type == 'MUSE' else '/embeddings_polyFASTTEXT/wiki.{}.align.vec'
+        self.cache_path = '/home/andreapdr/CLESA/embeddings' if type == 'MUSE' else '/home/andreapdr/CLESA/embeddings_polyFASTTEXT'
+        self.path = path + self.name.format(lang)
+        assert os.path.exists(path), f'pre-trained vectors not found in {path}'
+        super(EmbeddingsAligned, self).__init__(self.path, cache=self.cache_path)
+        self.vectors = self.extract(voc)
+
+    def vocabulary(self):
+        return set(self.stoi.keys())
+
+    def extract(self, words):
+        source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.stoi)
+        extraction = torch.zeros((len(words), self.dim))
+        extraction[source_idx] = self.vectors[target_idx]
+        return extraction
+
+    def reduce(self, dim):
+        pca = PCA(n_components=dim)
+        self.vectors = pca.fit_transform(self.vectors)
+        return
 
 
 class FastTextMUSE(PretrainedEmbeddings):
@@ -164,7 +189,6 @@ class FastTextMUSE(PretrainedEmbeddings):
         print(f'Loading fastText pretrained vectors from {path}')
         assert os.path.exists(path), print(f'pre-trained vectors not found in {path}')
         self.embed = FastTextWikiNews(path, lang, max_vectors=limit)
-        # print('Done')
 
     def vocabulary(self):
         return set(self.embed.stoi.keys())
@@ -179,21 +203,76 @@ class FastTextMUSE(PretrainedEmbeddings):
         return extraction
 
 
-def embedding_matrix(path, voc, lang):
-    vocabulary = np.asarray(list(zip(*sorted(voc.items(), key=lambda x:x[1])))[0])
+class StorageEmbeddings:
+    def __init__(self, path):
+        self.path = path
+        self.lang_U = dict()
+        self.lang_S = dict()
 
-    print('[embedding matrix]')
-    print(f'# [pretrained-matrix: FastTextMUSE {lang}]')
-    pretrained = FastTextMUSE(path, lang)
-    P = pretrained.extract(vocabulary).numpy()
-    del pretrained
-    print(f'[embedding matrix done] of shape={P.shape}\n')
+    def _add_embeddings_unsupervised(self, type, docs, vocs, max_label_space=300):
+        for lang in docs.keys():
+            nC = self.lang_U[lang].shape[1]
+            print(f'# [unsupervised-matrix {type}] for {lang}')
+            voc = np.asarray(list(zip(*sorted(vocs[lang].items(), key=lambda x: x[1])))[0])
+            self.lang_U[lang] = EmbeddingsAligned(type, self.path, lang, voc).vectors
+            # if self.lang_U[lang].shape[1] > dim != 0:
+            #     print(f'unsupervised matrix has more dimensions ({self.lang_U[lang].shape[1]}) than'
+            #           f' the allowed limit {dim}. Applying PCA(n_components={dim})')
+            #     pca = PCA(n_components=dim)
+            #     self.lang_U[lang] = pca.fit_transform(self.lang_U[lang])
+            print(f'Matrix U (weighted sum) of shape {self.lang_U[lang].shape}\n')
+        if max_label_space == 0:
+            print(f'Computing optimal number of PCA components along matrices U')
+            optimal_n = get_optimal_dim(self.lang_U, 'U')
+            self.lang_U = run_pca(optimal_n, self.lang_U)
+        elif max_label_space < nC:
+            self.lang_U = run_pca(max_label_space, self.lang_U)
 
-    return vocabulary, P
+        return
+
+    def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space, voc):
+        # if max_label_space == 0:
+        #     print('Computing optimal number of PCA components along matrices S...')
+        #     optimal_n = self.get_optimal_supervised_components(docs, labels)
+        #     max_label_space = optimal_n
+        for lang in docs.keys():    # compute supervised matrices S - then apply PCA
+            nC = self.lang_S[lang].shape[1]
+            print(f'# [supervised-matrix] for {lang}')
+            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, voc[lang], lang)
+            print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
+
+        if max_label_space == 0:
+            optimal_n = get_optimal_dim(self.lang_S, 'S')
+            self.lang_S = run_pca(optimal_n, self.lang_S)
+        elif max_label_space < nC:
+            self.lang_S = run_pca(max_label_space, self.lang_S)
+
+        return
+
+    def _concatenate_embeddings(self, docs):
+        _r = dict()
+        for lang in self.lang_U.keys():
+            _r[lang] = np.hstack((docs[lang].dot(self.lang_U[lang]), docs[lang].dot(self.lang_S[lang])))
+        return _r
+
+    def fit(self, config, docs, vocs, labels):
+        if config['unsupervised']:
+            self._add_embeddings_unsupervised(config['we_type'], docs, vocs, config['dim_reduction_unsupervised'])
+        if config['supervised']:
+            self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'], vocs)
+        return self
 
 
-def WCE_matrix(Xtr, Ytr, lang):
-    print('\n# [supervised-matrix]')
-    S = get_supervised_embeddings(Xtr[lang], Ytr[lang], max_label_space=50)
-    print(f'[embedding matrix done] of shape={S.shape}\n')
-    return S
+    def predict(self, config, docs):
+        if config['supervised'] and config['unsupervised']:
+            return self._concatenate_embeddings(docs)
+        elif config['supervised']:
+            _r = dict()
+            for lang in docs.keys():
+                _r[lang] = docs[lang].dot(self.lang_S[lang])
+        else:
+            _r = dict()
+            for lang in docs.keys():
+                _r[lang] = docs[lang].dot(self.lang_U[lang])
+        return _r
+

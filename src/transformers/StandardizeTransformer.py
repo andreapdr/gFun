@@ -12,7 +12,7 @@ class StandardizeTransformer:
         self.std = np.clip(std, 1e-5, None)
         self.mean = np.mean(X, axis=self.axis)
         self.yetfit=True
-        print('done')
+        print('done\n')
         return self
 
     def predict(self, X):
