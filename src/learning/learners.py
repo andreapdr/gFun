@@ -353,7 +353,7 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         self.embedding_space = None
         self.model = None
         self.time = None
-        self.best_components = None # if auto optimize pca, it will store the optimal number of components
+        self.best_components = 'not set'    # if auto optimize pca, it will store the optimal number of components
 
     def vectorize(self, lX, prediction=False):
         langs = list(lX.keys())
@@ -398,10 +398,11 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
             _embedding_space = self.embedding_space.predict(self.config, lX)
             if self.config['max_label_space'] == 0:
-                if _embedding_space.shape[1] - 300 > 0:
-                    _temp = _embedding_space.shape[1] - 300
+                _cum_dimension = _embedding_space[list(_embedding_space.keys())[0]].shape[1]
+                if _cum_dimension - 300 > 0:
+                    _temp = _cum_dimension - 300
                 else:
-                    _temp = _embedding_space.shape[1]
+                    _temp = _cum_dimension
                 self.best_components = _temp
             # h_stacking posterior probabilities with (U) and/or (S) matrices
             for lang in self.languages:
@@ -415,10 +416,10 @@ class AndreaCLF(FunnellingPolylingualClassifier):
         _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
 
         # todo testing ...
-        if self.config['post_pca']:
-            print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
-            self.pca_independent_space.fit(_vertical_Z)
-            _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
+        # if self.config['post_pca']:
+        #     print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
+        #     self.pca_independent_space.fit(_vertical_Z)
+        #     _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
 
         print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
@@ -442,9 +443,9 @@ class AndreaCLF(FunnellingPolylingualClassifier):
             print(lZ[lang].shape)
             # todo testing
             lZ[lang] = self.standardizer.predict(lZ[lang])
-            if self.config['post_pca']:
-                print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
-                lZ[lang] = self.pca_independent_space.transform(lZ[lang])
+            # if self.config['post_pca']:
+            #     print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
+            #     lZ[lang] = self.pca_independent_space.transform(lZ[lang])
 
         return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
 

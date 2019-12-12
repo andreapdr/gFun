@@ -222,26 +222,40 @@ class StorageEmbeddings:
         elif max_label_space < nC:
             self.lang_U = run_pca(max_label_space, self.lang_U)
 
-
         return
 
     def _add_emebeddings_supervised(self, docs, labels, reduction, max_label_space, voc):
         for lang in docs.keys():    # compute supervised matrices S - then apply PCA
             print(f'# [supervised-matrix] for {lang}')
-            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang], reduction, max_label_space, voc[lang], lang)
+            self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang],
+                                                          reduction, max_label_space, voc[lang], lang)
             nC = self.lang_S[lang].shape[1]
             print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
 
         if max_label_space == 0:
             print(f'Computing optimal number of PCA components along matrices S')
             optimal_n = get_optimal_dim(self.lang_S, 'S')
+            print(f'Applying PCA(n_components={optimal_n})')
             self.lang_S = run_pca(optimal_n, self.lang_S)
         elif max_label_space == -1:
             print(f'Computing PCA on vertical stacked WCE embeddings')
             languages = self.lang_S.keys()
             _temp_stack = np.vstack([self.lang_S[lang] for lang in languages])
-            stacked_pca = PCA(n_components=50)
+            stacked_pca = PCA(n_components=_temp_stack.shape[1])
             stacked_pca.fit(_temp_stack)
+            best_n = None
+            _r = stacked_pca.explained_variance_ratio_
+            _r = np.cumsum(_r)
+            plt.plot(_r, label='Stacked Supervised')
+            for i in range(len(_r) - 1, 1, -1):
+                delta = _r[i] - _r[i - 1]
+                if delta > 0:
+                    best_n = i
+                    break
+            plt.show()
+            stacked_pca = PCA(n_components=best_n)
+            stacked_pca.fit(_temp_stack)
+            print(f'Applying PCA(n_components={i}')
             for lang in languages:
                 self.lang_S[lang] = stacked_pca.transform(self.lang_S[lang])
         elif max_label_space < nC:

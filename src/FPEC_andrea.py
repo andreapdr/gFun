@@ -47,9 +47,9 @@ parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
 
 parser.add_option("-l", dest="lang", type=str)
 
-parser.add_option("-a", dest="post_pca",
-                  help="If set to True, will apply PCA to the z-space (posterior probabilities stacked along with "
-                       "embedding space", default=False)
+# parser.add_option("-a", dest="post_pca",
+#                   help="If set to True, will apply PCA to the z-space (posterior probabilities stacked along with "
+#                        "embedding space", default=False)
 
 
 def get_learner(calibrate=False, kernel='linear'):
@@ -118,11 +118,10 @@ if __name__ == '__main__':
                   'we_type': op.we_type}
         _config_id = 'M_and_F'
 
-    ##### TODO - config dict is redundant - we have already op argparse ...
     config['reduction'] = 'PCA'
     config['max_label_space'] = op.max_labels_S
     config['dim_reduction_unsupervised'] = op.max_labels_U
-    config['post_pca'] = op.post_pca
+    # config['post_pca'] = op.post_pca
     # config['plot_covariance_matrices'] = True
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')

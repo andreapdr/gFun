@@ -2,6 +2,7 @@ from sklearn.decomposition import PCA
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def run_pca(dim, X):
     """
     :param dim: number of pca components to keep
