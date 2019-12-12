@@ -35,15 +35,21 @@ parser.add_option("-c", "--optimc", dest="optimc", action='store_true',
 parser.add_option("-j", "--n_jobs", dest="n_jobs",type=int,
                   help="Number of parallel jobs (default is -1, all)", default=-1)
 
-parser.add_option("-p", "--pca", dest="max_labels", type=int,
-                  help="If less than number of target classes, will apply PCA to supervised matrix. If set to 0 it"
-                       " will automatically search for the best number of components", default=300)
+parser.add_option("-p", "--pca", dest="max_labels_S", type=int,
+                  help="If smaller than number of target classes, PCA will be applied to supervised matrix. "
+                       "If set to 0 it will automatically search for the best number of components. "
+                       "If set to -1 it will apply PCA to the vstacked supervised matrix (PCA dim set to 50 atm)",
+                  default=300)
 
 parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
-                  help="If smaller than Unsupervised Dimension, will apply PCA to unsupervised matrix. If set to 0 it"
-                       " will automatically search for the best number of components", default=300)
+                  help="If smaller than Unsupervised Dimension, PCA will be applied to unsupervised matrix."
+                       " If set to 0 it will automatically search for the best number of components", default=300)
 
 parser.add_option("-l", dest="lang", type=str)
+
+parser.add_option("-a", dest="post_pca",
+                  help="If set to True, will apply PCA to the z-space (posterior probabilities stacked along with "
+                       "embedding space", default=False)
 
 
 def get_learner(calibrate=False, kernel='linear'):
@@ -73,7 +79,7 @@ if __name__ == '__main__':
     data = MultilingualDataset.load(op.dataset)
     data.show_dimensions()
 
-    data.set_view(languages=['en','it', 'pt', 'sv'], categories=list(range(10)))
+    # data.set_view(languages=['en','it', 'pt', 'sv'], categories=list(range(10)))
     # data.set_view(languages=[op.lang])
     # data.set_view(categories=list(range(10)))
     lXtr, lytr = data.training()
@@ -114,11 +120,33 @@ if __name__ == '__main__':
 
     ##### TODO - config dict is redundant - we have already op argparse ...
     config['reduction'] = 'PCA'
-    config['max_label_space'] = op.max_labels
+    config['max_label_space'] = op.max_labels_S
     config['dim_reduction_unsupervised'] = op.max_labels_U
+    config['post_pca'] = op.post_pca
     # config['plot_covariance_matrices'] = True
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
+
+    PLE_test = False
+    if PLE_test:
+        ple = PolylingualEmbeddingsClassifier(wordembeddings_path='/home/moreo/CLESA/PolylingualEmbeddings',
+                                              learner=get_learner(calibrate=False),
+                                              c_parameters=get_params(dense=False),
+                                              n_jobs=op.n_jobs)
+
+        print('# Fitting ...')
+        ple.fit(lXtr, lytr)
+
+        print('# Evaluating ...')
+        ple_eval = evaluate_method(ple, lXte, lyte)
+
+        metrics = []
+        for lang in lXte.keys():
+            macrof1, microf1, macrok, microk = ple_eval[lang]
+            metrics.append([macrof1, microf1, macrok, microk])
+            print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
+        print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))
+
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
     classifier = AndreaCLF(we_path=op.we_path,
@@ -140,6 +168,8 @@ if __name__ == '__main__':
         macrof1, microf1, macrok, microk = l_eval[lang]
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
-        results.add_row(result_id, 'PolyEmbed_andrea', 'svm', _config_id, config['we_type'], op.optimc, op.dataset.split('/')[-1],
-                        classifier.time, lang, macrof1, microf1, macrok, microk, '')
+        results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
+                        (config['max_label_space'], classifier.best_components),
+                        config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
+                        lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))

@@ -8,7 +8,7 @@ from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers.StandardizeTransformer import StandardizeTransformer
-# from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA
 
 
 def _sort_if_sparse(X):
@@ -214,11 +214,6 @@ class NaivePolylingualClassifier:
 
         models = Parallel(n_jobs=self.n_jobs)\
             (delayed(MonolingualClassifier(self.base_learner, parameters=self.parameters).fit)((lX[lang]),ly[lang]) for lang in langs)
-        #
-        # models = [MonolingualClassifier(self.base_learner, parameters=self.parameters) for lang in langs]
-        #
-        # for model, lang in zip(models, langs):
-        #     model.fit(lX[lang], ly[lang])
 
         self.model = {lang: models[i] for i, lang in enumerate(langs)}
         self.empty_categories = {lang:self.model[lang].empty_categories for lang in langs}
@@ -329,6 +324,131 @@ class MonolingualClassifier:
         return self.best_params_
 
 
+class AndreaCLF(FunnellingPolylingualClassifier):
+    def __init__(self,
+                 we_path,
+                 config,
+                 first_tier_learner,
+                 meta_learner,
+                 first_tier_parameters=None,
+                 meta_parameters=None,
+                 folded_projections=1,
+                 calmode='cal',
+                 n_jobs=-1):
+
+        super().__init__(first_tier_learner,
+                         meta_learner,
+                         first_tier_parameters,
+                         meta_parameters,
+                         folded_projections,
+                         calmode,
+                         n_jobs)
+
+        self.pca_independent_space = PCA(n_components=50)
+        self.we_path = we_path
+        self.config = config
+        self.lang_word2idx = dict()
+        self.languages = []
+        self.lang_tfidf = {}
+        self.embedding_space = None
+        self.model = None
+        self.time = None
+        self.best_components = None # if auto optimize pca, it will store the optimal number of components
+
+    def vectorize(self, lX, prediction=False):
+        langs = list(lX.keys())
+        print(f'# tfidf-vectorizing docs')
+        if prediction:
+
+            for lang in langs:
+                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
+                tfidf_vectorizer = self.lang_tfidf[lang]
+                lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            return self
+
+        for lang in langs:
+            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
+            self.languages.append(lang)
+            tfidf_vectorizer.fit(lX[lang])
+            lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
+            self.lang_tfidf[lang] = tfidf_vectorizer
+        return self
+
+    def _get_zspace(self, lXtr, lYtr):
+        print('\nfitting the projectors... {}'.format(list(lXtr.keys())))
+        self.doc_projector.fit(lXtr, lYtr)
+
+        print('\nprojecting the documents')
+        lZ = self._projection(self.doc_projector, lXtr)
+
+        return lZ, lYtr
+
+    def fit(self, lX, ly):
+        tinit = time.time()
+        print('Vectorizing documents...')
+        self.vectorize(lX)
+
+        for lang in self.languages:
+            print(f'{lang}->{lX[lang].shape}')
+
+        Z, zy = self._get_zspace(lX, ly)
+
+        if self.config['supervised'] or self.config['unsupervised']:
+            self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
+            _embedding_space = self.embedding_space.predict(self.config, lX)
+            if self.config['max_label_space'] == 0:
+                if _embedding_space.shape[1] - 300 > 0:
+                    _temp = _embedding_space.shape[1] - 300
+                else:
+                    _temp = _embedding_space.shape[1]
+                self.best_components = _temp
+            # h_stacking posterior probabilities with (U) and/or (S) matrices
+            for lang in self.languages:
+                Z[lang] = np.hstack((Z[lang], _embedding_space[lang]))
+
+        # stacking Z space vertically
+        _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
+        _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
+
+        self.standardizer = StandardizeTransformer()
+        _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
+
+        # todo testing ...
+        if self.config['post_pca']:
+            print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
+            self.pca_independent_space.fit(_vertical_Z)
+            _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
+
+        print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
+        self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
+                                           n_jobs=self.n_jobs)
+        self.model.fit(_vertical_Z, _vertical_Zy)
+        self.time = time.time() - tinit
+        print(f'\nTotal training time elapsed: {round((self.time/60), 2)} min')
+
+    def predict(self, lX, ly):
+        print('Vectorizing documents')
+        self.vectorize(lX, prediction=True)
+        lZ = self._projection(self.doc_projector, lX)
+
+        if self.config['supervised'] or self.config['unsupervised']:
+            _embedding_space = self.embedding_space.predict(self.config, lX)
+
+            for lang in lX.keys():
+                lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
+
+        for lang in lZ.keys():
+            print(lZ[lang].shape)
+            # todo testing
+            lZ[lang] = self.standardizer.predict(lZ[lang])
+            if self.config['post_pca']:
+                print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
+                lZ[lang] = self.pca_independent_space.transform(lZ[lang])
+
+        return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
+
+
 class PolylingualEmbeddingsClassifier:
     """
     This classifier creates document embeddings by a tfidf weighted average of polylingual embeddings from the article
@@ -395,24 +515,21 @@ class PolylingualEmbeddingsClassifier:
         langs = list(lX.keys())
         WEtr, Ytr = [], []
         self.fit_vectorizers(lX) # if already fit, does nothing
-        _lX = dict()
         for lang in langs:
-            _lX[lang] = self.lang_tfidf[lang].transform(lX[lang])
             WEtr.append(self.embed(lX[lang], lang))
             Ytr.append(ly[lang])
 
-        # TODO @Andrea --> here embeddings should be stacked horizontally!
         WEtr = np.vstack(WEtr)
         Ytr = np.vstack(Ytr)
         self.embed_time = time.time() - tinit
 
         print('fitting the WE-space of shape={}'.format(WEtr.shape))
         self.model = MonolingualClassifier(base_learner=self.learner, parameters=self.c_parameters, n_jobs=self.n_jobs)
-        self.model.fit(_lX['da'], ly['da'])
+        self.model.fit(WEtr, Ytr)
         self.time = time.time() - tinit
         return self
 
-    def predict(self, lX):
+    def predict(self, lX, lY):
         """
         :param lX: a dictionary {language_label: [list of preprocessed documents]}
         """
@@ -427,123 +544,8 @@ class PolylingualEmbeddingsClassifier:
         """
         assert self.model is not None, 'predict called before fit'
         langs = list(lX.keys())
-        # lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
-        return _joblib_transform_multiling(self.model.predict_proba, self.lang_tfidf['da'], n_jobs=self.n_jobs)
+        lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
+        return _joblib_transform_multiling(self.model.predict_proba, lWEte, n_jobs=self.n_jobs)
 
     def best_params(self):
         return self.model.best_params()
-
-
-class AndreaCLF(FunnellingPolylingualClassifier):
-    def __init__(self,
-                 we_path,
-                 config,
-                 first_tier_learner,
-                 meta_learner,
-                 first_tier_parameters=None,
-                 meta_parameters=None,
-                 folded_projections=1,
-                 calmode='cal',
-                 n_jobs=-1):
-
-        super().__init__(first_tier_learner,
-                         meta_learner,
-                         first_tier_parameters,
-                         meta_parameters,
-                         folded_projections,
-                         calmode,
-                         n_jobs)
-
-        self.pca_independent_space = PCA(n_components=100)
-        self.we_path = we_path
-        self.config = config
-        self.lang_word2idx = dict()
-        self.languages = []
-        self.lang_tfidf = {}
-        self.embedding_space = None
-        self.model = None
-        self.time = None
-
-    def vectorize(self, lX, prediction=False):
-        langs = list(lX.keys())
-        print(f'# tfidf-vectorizing docs')
-        if prediction:
-            for lang in langs:
-                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
-                tfidf_vectorizer = self.lang_tfidf[lang]
-                lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            return self
-
-        for lang in langs:
-            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
-            self.languages.append(lang)
-            tfidf_vectorizer.fit(lX[lang])
-            lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer
-        return self
-
-    # @override std class method
-    def _get_zspace(self, lXtr, lYtr):
-        print('\nfitting the projectors... {}'.format(list(lXtr.keys())))
-        self.doc_projector.fit(lXtr, lYtr)
-
-        print('\nprojecting the documents')
-        lZ = self._projection(self.doc_projector, lXtr)
-
-        return lZ, lYtr
-
-    # @override std class method
-    def fit(self, lX, ly):
-        tinit = time.time()
-        print('Vectorizing documents...')
-        self.vectorize(lX)
-
-        for lang in self.languages:
-            print(f'{lang}->{lX[lang].shape}')
-
-        Z, zy = self._get_zspace(lX, ly)
-
-        if self.config['supervised'] or self.config['unsupervised']:
-            self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
-            _embedding_space = self.embedding_space.predict(self.config, lX)
-            # h_stacking posterior probabilities with (U) and/or (S) matrices
-            for lang in self.languages:
-                Z[lang] = np.hstack((Z[lang], _embedding_space[lang]))
-
-        # stacking Z space vertically
-        _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
-        _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
-
-        # todo testing ...
-        # self.pca_independent_space.fit(_vertical_Z)
-        # _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
-
-        self.standardizer = StandardizeTransformer()
-        _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
-
-        print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
-        self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
-                                           n_jobs=self.n_jobs)
-        self.model.fit(_vertical_Z, _vertical_Zy)
-        self.time = time.time() - tinit
-        print(f'\nTotal training time elapsed: {round((self.time/60), 2)} min')
-
-    def predict(self, lX, ly):
-        print('Vectorizing documents')
-        self.vectorize(lX, prediction=True)
-        lZ = self._projection(self.doc_projector, lX)
-
-        if self.config['supervised'] or self.config['unsupervised']:
-            _embedding_space = self.embedding_space.predict(self.config, lX)
-
-            for lang in lX.keys():
-                lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
-
-        for lang in lZ.keys():
-            print(lZ[lang].shape)
-            # todo testing
-            # lZ[lang] = self.pca_independent_space.transform(lZ[lang])
-            lZ[lang] = self.standardizer.predict(lZ[lang])
-
-        return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
