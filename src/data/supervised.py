@@ -12,6 +12,7 @@ def zscores(x, axis=0): #scipy.stats.zscores does not avoid division by 0, which
 
 def supervised_embeddings_tfidf(X,Y):
     tfidf_norm = X.sum(axis=0)
+    tfidf_norm[tfidf_norm==0] = 1
     F = (X.T).dot(Y) / tfidf_norm.T
     return F
 

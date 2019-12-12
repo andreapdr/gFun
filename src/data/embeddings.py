@@ -276,6 +276,7 @@ class StorageEmbeddings:
             self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'], vocs)
         return self
 
+
     def predict(self, config, docs):
         if config['supervised'] and config['unsupervised']:
             return self._concatenate_embeddings(docs)
@@ -288,3 +289,4 @@ class StorageEmbeddings:
             for lang in docs.keys():
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
         return _r
+
