@@ -220,6 +220,7 @@ class StorageEmbeddings:
             optimal_n = get_optimal_dim(self.lang_U, 'U')
             self.lang_U = run_pca(optimal_n, self.lang_U)
         elif max_label_space < nC:
+            print(f'Applying PCA to unsupervised matrix U')
             self.lang_U = run_pca(max_label_space, self.lang_U)
 
         return
@@ -258,7 +259,8 @@ class StorageEmbeddings:
             print(f'Applying PCA(n_components={i}')
             for lang in languages:
                 self.lang_S[lang] = stacked_pca.transform(self.lang_S[lang])
-        elif max_label_space < nC:
+        elif max_label_space <= nC:
+            print(f'Computing PCA on Supervised Matrix PCA(n_components:{max_label_space})')
             self.lang_S = run_pca(max_label_space, self.lang_S)
 
         return
@@ -276,7 +278,6 @@ class StorageEmbeddings:
             self._add_emebeddings_supervised(docs, labels, config['reduction'], config['max_label_space'], vocs)
         return self
 
-
     def predict(self, config, docs):
         if config['supervised'] and config['unsupervised']:
             return self._concatenate_embeddings(docs)
@@ -289,4 +290,3 @@ class StorageEmbeddings:
             for lang in docs.keys():
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
         return _r
-

@@ -85,7 +85,6 @@ if __name__ == '__main__':
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
 
-
     if op.set_c != -1:
         meta_parameters = None
     else:
@@ -152,7 +151,7 @@ if __name__ == '__main__':
                            config=config,
                            first_tier_learner=get_learner(calibrate=True),
                            meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                           first_tier_parameters=get_params(dense=False),
+                           first_tier_parameters=None,   # get_params(dense=False),-->first_tier should not be optimized
                            meta_parameters=get_params(dense=True),
                            n_jobs=op.n_jobs)
 
