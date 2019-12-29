@@ -125,9 +125,10 @@ if __name__ == '__main__':
 
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
-    PLE_test = False
+    PLE_test = True
     if PLE_test:
-        ple = PolylingualEmbeddingsClassifier(wordembeddings_path='/home/moreo/CLESA/PolylingualEmbeddings',
+        ple = PolylingualEmbeddingsClassifier(wordembeddings_path='/home/andreapdr/CLESA/',
+                                              config = config,
                                               learner=get_learner(calibrate=False),
                                               c_parameters=get_params(dense=False),
                                               n_jobs=op.n_jobs)
@@ -143,7 +144,11 @@ if __name__ == '__main__':
             macrof1, microf1, macrok, microk = ple_eval[lang]
             metrics.append([macrof1, microf1, macrok, microk])
             print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
+            results.add_row('MLE', 'svm', 'no', config['we_type'],
+                            'no','no', op.optimc, op.dataset.split('/')[-1], ple.time,
+                            lang, macrof1, microf1, macrok, microk, '')
         print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))
+        exit()
 
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
@@ -151,7 +156,7 @@ if __name__ == '__main__':
                            config=config,
                            first_tier_learner=get_learner(calibrate=True),
                            meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                           first_tier_parameters=None,   # get_params(dense=False),-->first_tier should not be optimized
+                           first_tier_parameters=None,   # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
                            meta_parameters=get_params(dense=True),
                            n_jobs=op.n_jobs)
 
@@ -169,5 +174,5 @@ if __name__ == '__main__':
         results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
                         (config['max_label_space'], classifier.best_components),
                         config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
-                        lang, macrof1, microf1, macrok, microk, '')
+                        lang, macrof1, microf1, macrok, microk, 'min_prevalence = 0')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))

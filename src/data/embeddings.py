@@ -226,6 +226,18 @@ class StorageEmbeddings:
         return
 
     def _add_embeddings_supervised(self, docs, labels, reduction, max_label_space, voc):
+        only_well_represented_C = False  # TODO testing
+        if only_well_represented_C:
+            labels = labels.copy()
+            min_prevalence = 0
+            print(f'# REDUCING LABELS TO min_prevalence = {min_prevalence} in order to compute WCE Matrix ...')
+            langs = list(docs.keys())
+            well_repr_cats = np.logical_and.reduce([labels[lang].sum(axis=0)>min_prevalence for lang in langs])
+            # lY = {lY[lang][:, well_repr_cats] for lang in langs}  TODO not clear
+            for lang in langs:
+                labels[lang] = labels[lang][:, well_repr_cats]
+            print(f'Target number reduced to: {labels[lang].shape[1]}\n')
+
         for lang in docs.keys():    # compute supervised matrices S - then apply PCA
             print(f'# [supervised-matrix] for {lang}')
             self.lang_S[lang] = get_supervised_embeddings(docs[lang], labels[lang],

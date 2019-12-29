@@ -461,7 +461,7 @@ class PolylingualEmbeddingsClassifier:
     }
     url: https://github.com/facebookresearch/MUSE
     """
-    def __init__(self, wordembeddings_path, learner, c_parameters=None, n_jobs=-1):
+    def __init__(self, wordembeddings_path, config, learner, c_parameters=None, n_jobs=-1):
         """
         :param wordembeddings_path: the path to the directory containing the polylingual embeddings
         :param learner: the learner
@@ -469,11 +469,15 @@ class PolylingualEmbeddingsClassifier:
         :param n_jobs: the number of concurrent threads
         """
         self.wordembeddings_path = wordembeddings_path
+        self.config = config
         self.learner = learner
         self.c_parameters=c_parameters
         self.n_jobs = n_jobs
         self.lang_tfidf = {}
         self.model = None
+        self.languages = []
+        self.lang_word2idx = dict()
+        self.embedding_space = None
 
     def fit_vectorizers(self, lX):
         for lang in lX.keys():
@@ -482,6 +486,27 @@ class PolylingualEmbeddingsClassifier:
                 docs = lX[lang]
                 tfidf.fit(docs)
                 self.lang_tfidf[lang] = tfidf
+
+
+    def vectorize(self, lX, prediction=False):
+        langs = list(lX.keys())
+        print(f'# tfidf-vectorizing docs')
+        if prediction:
+
+            for lang in langs:
+                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
+                tfidf_vectorizer = self.lang_tfidf[lang]
+                lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            return self
+
+        for lang in langs:
+            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
+            self.languages.append(lang)
+            tfidf_vectorizer.fit(lX[lang])
+            lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
+            self.lang_tfidf[lang] = tfidf_vectorizer
+        return self
 
     def embed(self, docs, lang):
         assert lang in self.lang_tfidf, 'unknown language'
@@ -515,13 +540,17 @@ class PolylingualEmbeddingsClassifier:
         tinit = time.time()
         langs = list(lX.keys())
         WEtr, Ytr = [], []
-        self.fit_vectorizers(lX) # if already fit, does nothing
-        for lang in langs:
-            WEtr.append(self.embed(lX[lang], lang))
-            Ytr.append(ly[lang])
+        # self.fit_vectorizers(lX) # if already fit, does nothing
+        self.vectorize(lX)
+        # config = {'unsupervised' : False, 'supervised': True}
+        self.embedding_space = StorageEmbeddings(self.wordembeddings_path).fit(self.config, lX,  self.lang_word2idx, ly)
+        WEtr = self.embedding_space.predict(self.config, lX)
+        # for lang in langs:
+        #     WEtr.append(self.embed(lX[lang], lang)) # todo embed with other matrices
+        #     Ytr.append(ly[lang])
 
-        WEtr = np.vstack(WEtr)
-        Ytr = np.vstack(Ytr)
+        WEtr = np.vstack([WEtr[lang] for lang in langs])
+        Ytr = np.vstack([ly[lang] for lang in langs])
         self.embed_time = time.time() - tinit
 
         print('fitting the WE-space of shape={}'.format(WEtr.shape))
@@ -535,8 +564,10 @@ class PolylingualEmbeddingsClassifier:
         :param lX: a dictionary {language_label: [list of preprocessed documents]}
         """
         assert self.model is not None, 'predict called before fit'
+        self.vectorize(lX, prediction=True)
         langs = list(lX.keys())
-        lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
+        lWEte = self.embedding_space.predict(self.config, lX)
+        # lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
         return _joblib_transform_multiling(self.model.predict, lWEte, n_jobs=self.n_jobs)
 
     def predict_proba(self, lX):
