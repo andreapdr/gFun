@@ -3,8 +3,9 @@ import pickle
 from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
-from data.supervised import get_supervised_embeddings
+from learning.supervised import get_supervised_embeddings
 from util.decompositions import *
+from util.SIF_embed import *
 
 
 class PretrainedEmbeddings(ABC):
@@ -233,7 +234,6 @@ class StorageEmbeddings:
             print(f'# REDUCING LABELS TO min_prevalence = {min_prevalence} in order to compute WCE Matrix ...')
             langs = list(docs.keys())
             well_repr_cats = np.logical_and.reduce([labels[lang].sum(axis=0)>min_prevalence for lang in langs])
-            # lY = {lY[lang][:, well_repr_cats] for lang in langs}  TODO not clear
             for lang in langs:
                 labels[lang] = labels[lang][:, well_repr_cats]
             print(f'Target number reduced to: {labels[lang].shape[1]}\n')
@@ -245,15 +245,15 @@ class StorageEmbeddings:
             nC = self.lang_S[lang].shape[1]
             print(f'[embedding matrix done] of shape={self.lang_S[lang].shape}\n')
 
-        if max_label_space == 0:
+        if max_label_space == 0:    # looking for best n_components analyzing explained_variance_ratio
             print(f'Computing optimal number of PCA components along matrices S')
             optimal_n = get_optimal_dim(self.lang_S, 'S')
             print(f'Applying PCA(n_components={optimal_n})')
             self.lang_S = run_pca(optimal_n, self.lang_S)
-        elif max_label_space == -1:
+        elif max_label_space == -1: # applying pca to the verticals stacked matrix of WCE embeddings
             print(f'Computing PCA on vertical stacked WCE embeddings')
             languages = self.lang_S.keys()
-            _temp_stack = np.vstack([self.lang_S[lang] for lang in languages])
+            _temp_stack = np.vstack([self.lang_S[lang] for lang in languages])  # stacking WCE vertically
             stacked_pca = PCA(n_components=_temp_stack.shape[1])
             stacked_pca.fit(_temp_stack)
             best_n = None
@@ -271,11 +271,14 @@ class StorageEmbeddings:
             print(f'Applying PCA(n_components={i}')
             for lang in languages:
                 self.lang_S[lang] = stacked_pca.transform(self.lang_S[lang])
-        elif max_label_space <= nC: # also equal in order to reduce it to the same initial dimension
+        elif max_label_space <= nC: # less or equal in order to reduce it to the same initial dimension
             print(f'Computing PCA on Supervised Matrix PCA(n_components:{max_label_space})')
             self.lang_S = run_pca(max_label_space, self.lang_S)
 
         return
+
+    def SIF_embeddings(self):
+        print('todo') # TODO
 
     def _concatenate_embeddings(self, docs):
         _r = dict()
@@ -293,6 +296,9 @@ class StorageEmbeddings:
     def predict(self, config, docs):
         if config['supervised'] and config['unsupervised']:
             return self._concatenate_embeddings(docs)
+            # todo testing applying pca to hstack muse + wce
+            # _reduced = self._concatenate_embeddings(docs)
+            # return run_pca(300, _reduced)
         elif config['supervised']:
             _r = dict()
             for lang in docs.keys():
@@ -301,4 +307,5 @@ class StorageEmbeddings:
             _r = dict()
             for lang in docs.keys():
                 _r[lang] = docs[lang].dot(self.lang_U[lang])
+
         return _r

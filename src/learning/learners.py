@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from data.embeddings import WordEmbeddings, StorageEmbeddings
+from learning.embeddings import WordEmbeddings, StorageEmbeddings
 from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
@@ -9,6 +9,7 @@ from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers.StandardizeTransformer import StandardizeTransformer
 from sklearn.decomposition import PCA
+from models.cnn_class import CNN_pdr
 
 
 def _sort_if_sparse(X):
@@ -581,3 +582,151 @@ class PolylingualEmbeddingsClassifier:
 
     def best_params(self):
         return self.model.best_params()
+
+
+class MonolingualNetSvm:
+    """
+    testing: funnelling with NN managing word embeddings compositionality. An ensemble of n-SVMs (n equals to the
+    number of training languages) is first fit on the data, generating the documents projection in the Z-space. Next,
+    the projection are fed to a single NN with their respective document embeddings. The documents are projected into
+    the embedding space while preserving their dimensionality (output dim is 300). These projection are horizonatally
+    concatenated with the respective projection and passed through a fC layer with sigmoid act and output dim equal
+    to the number of target classes.
+    # TODO ATM testing with only 1 language
+    """
+    def __init__(self, lX, ly, first_tier_learner, first_tier_parameters, n_jobs):
+        self.lX = lX
+        self.ly = ly
+        # SVM Attributes
+        self.doc_projector = NaivePolylingualClassifier(first_tier_learner, first_tier_parameters,
+                                                        n_jobs=n_jobs)
+        self.calmode = 'cal'
+        self.languages = []
+        self.lang_word2idx = dict()
+        self.lang_tfidf = {}
+        self.base_learner = 'TODO'
+        self.parameters = 'TODO'
+        # NN Attributes
+        self.NN = 'TODO'
+
+
+    def load_preprocessed(self):
+        """
+        in order to speed up the process, documents are first tokenized in the "main". Here, tokenized docs, word_index, and
+        targets are loaded.
+        :return: dict[lang] = (word_index, tokenized_docs, targets)
+        """
+        import pickle
+        with open('/home/andreapdr/CLESA/preprocessed_dataset_nn/rcv1-2_train.pickle', 'rb') as f:
+            return pickle.load(f)
+
+    def _build_embedding_matrix(self, lang, word_index):
+        """
+        build embedding matrix by filtering out OOV embeddings
+        :param lang:
+        :param word_index:
+        :return: filtered embedding matrix
+        """
+        from learning.embeddings import EmbeddingsAligned
+        type = 'MUSE'
+        path = '/home/andreapdr/CLESA/'
+        MUSE = EmbeddingsAligned(type, path, lang, word_index.keys())
+        return MUSE
+
+    def get_data_and_embed(self, data_dict):
+        from keras.preprocessing.sequence import pad_sequences
+
+        langs = data_dict.keys()
+        lang_embedding_matrix = dict()
+        nn_lXtr = dict()
+        nn_lytr = dict()
+
+        for lang in langs:
+            lang_embedding_matrix[lang] = self._build_embedding_matrix(lang, data_dict[lang][0])
+            nn_lXtr[lang] = pad_sequences(data_dict[lang][1], 100, padding='post')
+            nn_lytr[lang] = [data_dict[lang][2]]
+
+        return  nn_lXtr, nn_lytr, lang_embedding_matrix
+
+    def svm_vectorize(self, lX, prediction=False):
+        langs = list(lX.keys())
+        print(f'# tfidf-vectorizing docs')
+        if prediction:
+            for lang in langs:
+                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
+                tfidf_vectorizer = self.lang_tfidf[lang]
+                lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            return self
+        for lang in langs:
+            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
+            self.languages.append(lang)
+            tfidf_vectorizer.fit(lX[lang])
+            lX[lang] = tfidf_vectorizer.transform(lX[lang])
+            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
+            self.lang_tfidf[lang] = tfidf_vectorizer
+        return lX
+
+    def _get_zspace(self, lXtr, lYtr):
+        print('\nfitting the projectors... {}'.format(list(lXtr.keys())))
+        self.doc_projector.fit(lXtr, lYtr)
+
+        print('\nprojecting the documents')
+        lZ = self._projection(self.doc_projector, lXtr)
+
+        return lZ, lYtr
+
+    def _projection(self, doc_projector, lX):
+        """
+        Decides the projection function to be applied; predict_proba if the base classifiers are calibrated or
+        decision_function if otherwise
+        :param doc_projector: the document projector (a NaivePolylingualClassifier)
+        :param lX: {lang:matrix} to train
+        :return: the projection, applied with predict_proba or decision_function
+        """
+        if self.calmode=='cal':
+            return doc_projector.predict_proba(lX)
+        else:
+            l_decision_scores = doc_projector.decision_function(lX)
+            if self.calmode=='sigmoid':
+                def sigmoid(x): return 1 / (1 + np.exp(-x))
+                for lang in l_decision_scores.keys():
+                    l_decision_scores[lang] = sigmoid(l_decision_scores[lang])
+            return l_decision_scores
+
+    def fit(self):
+        """
+        # 1. Fit SVM to generate posterior probabilities:
+        #   1.1 Gather documents and vectorize them as in other SVM classifiers
+        # 2. Fit NN
+        #   2.1 Gather documents and build NN dataset by indexing wrt embedding matrix
+        #   2.2 Fit NN first-layer to generate compositional doc embedding
+        #   2.3 H-stack doc-embed and posterior P
+        #   2.4 Feed stacked vector to output layer (sigmoid act): output Nc
+        #   2.5 Train it...
+        """
+
+        # load pre-processed data
+        data_dict = self.load_preprocessed()
+        # build embedding matrices and neural network document training set
+        nn_lXtr, nn_lytr, lang_embedding_matrix = self.get_data_and_embed(data_dict)
+        # TF-IDF vectorzing documents for SVM classifier
+        svm_lX = self.svm_vectorize(self.lX)
+
+        # just testing on a smaller subset of data
+        test_svm_lX = dict()
+        test_svm_ly = dict()
+        test_svm_lX['it'] = svm_lX['it'][:10, :]
+        test_svm_ly['it'] = self.ly['it'][:10, :]
+        test_nn_data = nn_lXtr['it'][:10]
+
+        # projecting document into Z space by SVM
+        svm_Z, _ = self._get_zspace(test_svm_lX, test_svm_ly)
+
+        # initializing net and forward pass
+        net = CNN_pdr(73, 1, 300, len(lang_embedding_matrix['it'].vectors), 300, lang_embedding_matrix['it'].vectors)
+        out = net.forward(test_nn_data, svm_Z['it'])
+
+        print('TODO')
+
+    def net(self):
+        pass

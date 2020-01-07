@@ -5,7 +5,6 @@ from util.evaluation import *
 from optparse import OptionParser
 from util.file import exists
 from util.results import PolylingualClassificationResults
-from sklearn.svm import SVC
 from util.util import get_learner, get_params
 
 parser = OptionParser()
@@ -47,25 +46,6 @@ parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
 
 parser.add_option("-l", dest="lang", type=str)
 
-# parser.add_option("-a", dest="post_pca",
-#                   help="If set to True, will apply PCA to the z-space (posterior probabilities stacked along with "
-#                        "embedding space", default=False)
-
-
-def get_learner(calibrate=False, kernel='linear'):
-    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced', gamma='auto')
-
-
-def get_params(dense=False):
-    if not op.optimc:
-        return None
-    c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
-    kernel = 'rbf' if dense else 'linear'
-    return [{'kernel': [kernel], 'C': c_range, 'gamma':['auto']}]
-
-#######################################################################################################################
-
-
 if __name__ == '__main__':
     (op, args) = parser.parse_args()
 
@@ -74,7 +54,7 @@ if __name__ == '__main__':
 
     dataset_file = os.path.basename(op.dataset)
 
-    results = PolylingualClassificationResults(op.output)
+    results = PolylingualClassificationResults('./results/PLE_results.csv')
 
     data = MultilingualDataset.load(op.dataset)
     data.show_dimensions()
@@ -123,30 +103,26 @@ if __name__ == '__main__':
     # config['post_pca'] = op.post_pca
     # config['plot_covariance_matrices'] = True
 
-    result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
+    result_id = dataset_file + 'MLE_andrea' + _config_id + ('_optimC' if op.optimc else '')
 
-    print(f'### PolyEmbedd_andrea_{_config_id}\n')
-    classifier = AndreaCLF(we_path=op.we_path,
-                           config=config,
-                           first_tier_learner=get_learner(calibrate=True),
-                           meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                           first_tier_parameters=None,   # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
-                           meta_parameters=get_params(dense=True),
-                           n_jobs=op.n_jobs)
+    ple = PolylingualEmbeddingsClassifier(wordembeddings_path='/home/andreapdr/CLESA/',
+                                          config = config,
+                                          learner=get_learner(calibrate=False),
+                                          c_parameters=get_params(dense=False),
+                                          n_jobs=op.n_jobs)
 
     print('# Fitting ...')
-    classifier.fit(lXtr, lytr)
+    ple.fit(lXtr, lytr)
 
-    print('\n# Evaluating ...')
-    l_eval = evaluate_method(classifier, lXte, lyte)
+    print('# Evaluating ...')
+    ple_eval = evaluate_method(ple, lXte, lyte)
 
     metrics = []
     for lang in lXte.keys():
-        macrof1, microf1, macrok, microk = l_eval[lang]
+        macrof1, microf1, macrok, microk = ple_eval[lang]
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
-        results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
-                        (config['max_label_space'], classifier.best_components),
-                        config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
+        results.add_row('MLE', 'svm', _config_id, config['we_type'],
+                        'no','no', op.optimc, op.dataset.split('/')[-1], ple.time,
                         lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))
