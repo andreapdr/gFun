@@ -3,7 +3,7 @@ import pickle
 from torchtext.vocab import Vectors
 import torch
 from abc import ABC, abstractmethod
-from learning.supervised import get_supervised_embeddings
+from embeddings.supervised import get_supervised_embeddings
 from util.decompositions import *
 from util.SIF_embed import *
 

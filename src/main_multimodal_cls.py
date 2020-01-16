@@ -126,13 +126,13 @@ if __name__ == '__main__':
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
-    classifier = AndreaCLF(we_path=op.we_path,
-                           config=config,
-                           first_tier_learner=get_learner(calibrate=True),
-                           meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                           first_tier_parameters=None,   # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
-                           meta_parameters=get_params(dense=True),
-                           n_jobs=op.n_jobs)
+    classifier = FunnellingMultimodal(we_path=op.we_path,
+                                      config=config,
+                                      first_tier_learner=get_learner(calibrate=True),
+                                      meta_learner=get_learner(calibrate=False, kernel='rbf'),
+                                      first_tier_parameters=None,  # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
+                                      meta_parameters=get_params(dense=True),
+                                      n_jobs=op.n_jobs)
 
     print('# Fitting ...')
     classifier.fit(lXtr, lytr)

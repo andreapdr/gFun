@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from learning.embeddings import WordEmbeddings, StorageEmbeddings
+from embeddings.embeddings import WordEmbeddings, StorageEmbeddings
 from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
@@ -9,7 +9,7 @@ from joblib import Parallel, delayed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers.StandardizeTransformer import StandardizeTransformer
 from sklearn.decomposition import PCA
-from models.cnn_class import CNN_pdr
+from models.cnn_class_bu import CNN_pdr
 
 
 def _sort_if_sparse(X):
@@ -325,7 +325,7 @@ class MonolingualClassifier:
         return self.best_params_
 
 
-class AndreaCLF(FunnellingPolylingualClassifier):
+class FunnellingMultimodal(FunnellingPolylingualClassifier):
     def __init__(self,
                  we_path,
                  config,
@@ -627,7 +627,7 @@ class MonolingualNetSvm:
         :param word_index:
         :return: filtered embedding matrix
         """
-        from learning.embeddings import EmbeddingsAligned
+        from embeddings.embeddings import EmbeddingsAligned
         type = 'MUSE'
         path = '/home/andreapdr/CLESA/'
         MUSE = EmbeddingsAligned(type, path, lang, word_index.keys())
