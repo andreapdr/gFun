@@ -5,7 +5,8 @@ import numpy as np
 class PolylingualClassificationResults:
     def __init__(self, file, autoflush=True, verbose=False):
         self.file = file
-        self.columns = ['id', 'method', 'learner', 'embed', 'embed_type', 'optimp', 'dataset', 'time', 'lang', 'macrof1', 'microf1', 'macrok', 'microk', 'notes']
+        self.columns = ['method', 'learner', 'embed', 'embed_type', 'pca_s', 'pca_u', 'optimp', 'dataset', 'time',
+                        'lang', 'macrof1', 'microf1', 'macrok', 'microk', 'notes']
         self.autoflush = autoflush
         self.verbose = verbose
         if os.path.exists(file):
@@ -20,8 +21,8 @@ class PolylingualClassificationResults:
     def already_calculated(self, id):
         return (self.df['id'] == id).any()
 
-    def add_row(self, id, method, learner, embed, embed_type, optimp, dataset, time, lang, macrof1, microf1, macrok=np.nan, microk=np.nan, notes=''):
-        s = pd.Series([id, method, learner, embed, embed_type, optimp, dataset, time, lang, macrof1, microf1, macrok, microk, notes], index=self.columns)
+    def add_row(self, method, learner, embed, embed_type, pca_s, pca_u, optimp, dataset, time, lang, macrof1, microf1, macrok=np.nan, microk=np.nan, notes=''):
+        s = pd.Series([method, learner, embed, embed_type, pca_s, pca_u, optimp, dataset, time, lang, macrof1, microf1, macrok, microk, notes], index=self.columns)
         self.df = self.df.append(s, ignore_index=True)
         if self.autoflush: self.flush()
         self.tell(s.to_string())
