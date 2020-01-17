@@ -1,12 +1,16 @@
 import os
 from dataset_builder import MultilingualDataset
-from learning.learners import *
+# from learning.learners import *
+from learning.learners import FunnellingMultimodal
+from learning.transformers import Funnelling, PosteriorProbabilitiesEmbedder, MetaClassifier, \
+    TfidfVectorizerMultilingual, DocEmbedderList, WordClassEmbedder
 from util.evaluation import *
 from optparse import OptionParser
 from util.file import exists
 from util.results import PolylingualClassificationResults
 from sklearn.svm import SVC
 from util.util import get_learner, get_params
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 
 parser = OptionParser()
 
@@ -53,7 +57,13 @@ parser.add_option("-l", dest="lang", type=str)
 
 
 def get_learner(calibrate=False, kernel='linear'):
-    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, class_weight='balanced', gamma='auto')
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1,
+
+
+               # class_weight='balanced',
+
+
+               gamma='auto')
 
 
 def get_params(dense=False):
@@ -88,7 +98,7 @@ if __name__ == '__main__':
     if op.set_c != -1:
         meta_parameters = None
     else:
-        meta_parameters = [{'C': [1e3, 1e2, 1e1, 1, 1e-1]}]
+        meta_parameters = [{'C': [1, 1e3, 1e2, 1e1, 1e-1]}]
 
     # Embeddings and WCE config
     _available_mode = ['none', 'unsupervised', 'supervised', 'both']
@@ -126,13 +136,22 @@ if __name__ == '__main__':
     result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
 
     print(f'### PolyEmbedd_andrea_{_config_id}\n')
-    classifier = FunnellingMultimodal(we_path=op.we_path,
-                                      config=config,
-                                      first_tier_learner=get_learner(calibrate=True),
-                                      meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                                      first_tier_parameters=None,  # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
-                                      meta_parameters=get_params(dense=True),
-                                      n_jobs=op.n_jobs)
+    # classifier = FunnellingMultimodal(we_path=op.we_path,
+    #                                   config=config,
+    #                                   first_tier_learner=get_learner(calibrate=True),
+    #                                   meta_learner=get_learner(calibrate=False, kernel='rbf'),
+    #                                   first_tier_parameters=None,  # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
+    #                                   meta_parameters=get_params(dense=True),
+    #                                   n_jobs=op.n_jobs)
+
+    tfidfvectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
+    post_prob = PosteriorProbabilitiesEmbedder(first_tier_learner=get_learner(calibrate=True), first_tier_parameters=None)
+    wce_proj = WordClassEmbedder()
+    doc_embedder = DocEmbedderList(post_prob, wce_proj)
+    # doc_embedder = DocEmbedderList(post_prob)
+    meta = MetaClassifier(meta_learner=SVC(), meta_parameters=get_params(dense=True))
+    classifier = Funnelling(vectorizer=tfidfvectorizer, first_tier=doc_embedder, meta=meta)
+
 
     print('# Fitting ...')
     classifier.fit(lXtr, lytr)
@@ -145,8 +164,8 @@ if __name__ == '__main__':
         macrof1, microf1, macrok, microk = l_eval[lang]
         metrics.append([macrof1, microf1, macrok, microk])
         print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
-        results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
-                        (config['max_label_space'], classifier.best_components),
-                        config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
-                        lang, macrof1, microf1, macrok, microk, '')
+        # results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
+        #                 (config['max_label_space'], classifier.best_components),
+        #                 config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
+        #                 lang, macrof1, microf1, macrok, microk, '')
     print('Averages: MF1, mF1, MK, mK', np.mean(np.array(metrics), axis=0))

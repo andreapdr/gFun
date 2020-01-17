@@ -251,10 +251,10 @@ class NaivePolylingualClassifier:
         assert self.model is not None, 'predict called before fit'
         assert set(lX.keys()).issubset(set(self.model.keys())), 'unknown languages requested in predict'
         if self.n_jobs == 1:
-            return {lang:self.model[lang].predict(lX[lang]) for lang in lX.keys()}
+            return {lang:self.model[lang].transform(lX[lang]) for lang in lX.keys()}
         else:
             langs = list(lX.keys())
-            scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].predict)(lX[lang]) for lang in langs)
+            scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].transform)(lX[lang]) for lang in langs)
             return {lang: scores[i] for i, lang in enumerate(langs)}
 
     def best_params(self):
@@ -397,7 +397,7 @@ class FunnellingMultimodal(FunnellingPolylingualClassifier):
 
         if self.config['supervised'] or self.config['unsupervised']:
             self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
-            _embedding_space = self.embedding_space.predict(self.config, lX)
+            _embedding_space = self.embedding_space.transform(self.config, lX)
             if self.config['max_label_space'] == 0:
                 _cum_dimension = _embedding_space[list(_embedding_space.keys())[0]].shape[1]
                 if _cum_dimension - 300 > 0:
@@ -414,7 +414,7 @@ class FunnellingMultimodal(FunnellingPolylingualClassifier):
         _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
 
         self.standardizer = StandardizeTransformer()
-        _vertical_Z = self.standardizer.fit_predict(_vertical_Z)
+        _vertical_Z = self.standardizer.fit_transform(_vertical_Z)
 
         # todo testing ...
         # if self.config['post_pca']:
@@ -435,7 +435,7 @@ class FunnellingMultimodal(FunnellingPolylingualClassifier):
         lZ = self._projection(self.doc_projector, lX)
 
         if self.config['supervised'] or self.config['unsupervised']:
-            _embedding_space = self.embedding_space.predict(self.config, lX)
+            _embedding_space = self.embedding_space.transform(self.config, lX)
 
             for lang in lX.keys():
                 lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
@@ -443,7 +443,7 @@ class FunnellingMultimodal(FunnellingPolylingualClassifier):
         for lang in lZ.keys():
             print(lZ[lang].shape)
             # todo testing
-            lZ[lang] = self.standardizer.predict(lZ[lang])
+            lZ[lang] = self.standardizer.transform(lZ[lang])
             # if self.config['post_pca']:
             #     print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
             #     lZ[lang] = self.pca_independent_space.transform(lZ[lang])
@@ -545,7 +545,7 @@ class PolylingualEmbeddingsClassifier:
         self.vectorize(lX)
         # config = {'unsupervised' : False, 'supervised': True}
         self.embedding_space = StorageEmbeddings(self.wordembeddings_path).fit(self.config, lX,  self.lang_word2idx, ly)
-        WEtr = self.embedding_space.predict(self.config, lX)
+        WEtr = self.embedding_space.transform(self.config, lX)
         # for lang in langs:
         #     WEtr.append(self.embed(lX[lang], lang)) # todo embed with other matrices
         #     Ytr.append(ly[lang])
@@ -567,9 +567,9 @@ class PolylingualEmbeddingsClassifier:
         assert self.model is not None, 'predict called before fit'
         self.vectorize(lX, prediction=True)
         langs = list(lX.keys())
-        lWEte = self.embedding_space.predict(self.config, lX)
+        lWEte = self.embedding_space.transform(self.config, lX)
         # lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
-        return _joblib_transform_multiling(self.model.predict, lWEte, n_jobs=self.n_jobs)
+        return _joblib_transform_multiling(self.model.transform, lWEte, n_jobs=self.n_jobs)
 
     def predict_proba(self, lX):
         """

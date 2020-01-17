@@ -15,9 +15,9 @@ class StandardizeTransformer:
         print('done\n')
         return self
 
-    def predict(self, X):
+    def transform(self, X):
         if not self.yetfit: 'transform called before fit'
         return (X - self.mean) / self.std
 
-    def fit_predict(self, X):
-        return self.fit(X).predict(X)
+    def fit_transform(self, X):
+        return self.fit(X).transform(X)
