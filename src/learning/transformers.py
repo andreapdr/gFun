@@ -7,12 +7,12 @@ import time
 from sklearn.decomposition import PCA
 from joblib import Parallel, delayed
 from scipy.sparse import issparse, vstack, hstack
+from transformers.StandardizeTransformer import StandardizeTransformer
+from util.SIF_embed import remove_pc
 
 # ------------------------------------------------------------------
 # Data Processing
 # ------------------------------------------------------------------
-from transformers.StandardizeTransformer import StandardizeTransformer
-from util.SIF_embed import remove_pc
 
 
 class TfidfVectorizerMultilingual:
