@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 #from data.text_preprocessor import NLTKStemTokenizer
+from embeddings.embeddings import FastTextMUSE
 from embeddings.supervised import supervised_embeddings_tfidf, zscores
 from learning.learners import NaivePolylingualClassifier, MonolingualClassifier, _joblib_transform_multiling
 import time
@@ -53,7 +54,7 @@ class PosteriorProbabilitiesEmbedder:
                                                         self.fist_tier_parameters,
                                                         n_jobs=n_jobs)
 
-    def fit(self, lX, lY):
+    def fit(self, lX, lY, lV=None):
         print('fitting the projectors... {}'.format(lX.keys()))
         self.doc_projector.fit(lX, lY)
         return self
@@ -63,11 +64,36 @@ class PosteriorProbabilitiesEmbedder:
         lZ = self.doc_projector.predict_proba(lX)
         return lZ
 
-    def fit_transform(self, lX, ly=None):
+    def fit_transform(self, lX, ly=None, lV=None):
         return self.fit(lX, ly).transform(lX)
 
     def best_params(self):
         return self.doc_projector.best_params()
+
+
+class MuseEmbedder:
+
+    def __init__(self, path, n_jobs=-1):
+        self.path=path
+        self.n_jobs = n_jobs
+
+    def fit(self, lX, ly, lV):
+        self.langs = sorted(lX.keys())
+        MUSE = Parallel(n_jobs=self.n_jobs)(
+            delayed(FastTextMUSE)(self.path, lang) for lang in self.langs
+        )
+        self.MUSE = {l:MUSE[i].extract(lV[l]).numpy() for i,l in enumerate(self.langs)}
+        return self
+
+    def transform(self, lX):
+        MUSE = self.MUSE
+        XdotMUSE = Parallel(n_jobs=self.n_jobs)(
+            delayed(XdotM)(lX[lang], MUSE[lang]) for lang in self.langs
+        )
+        return {l: XdotMUSE[i] for i, l in enumerate(self.langs)}
+
+    def fit_transform(self, lX, ly, lV):
+        return self.fit(lX, ly, lV).transform(lX)
 
 
 class WordClassEmbedder:
@@ -76,7 +102,7 @@ class WordClassEmbedder:
         self.n_jobs = n_jobs
         self.max_label_space=max_label_space
 
-    def fit(self, lX, ly):
+    def fit(self, lX, ly, lV=None):
         self.langs = sorted(lX.keys())
         WCE = Parallel(n_jobs=self.n_jobs)(
             delayed(word_class_embedding_matrix)(lX[lang], ly[lang], self.max_label_space) for lang in self.langs
@@ -91,7 +117,7 @@ class WordClassEmbedder:
         )
         return {l: XdotWCE[i] for i, l in enumerate(self.langs)}
 
-    def fit_transform(self, lX, ly):
+    def fit_transform(self, lX, ly, lV=None):
         return self.fit(lX, ly).transform(lX)
 
 
@@ -119,11 +145,13 @@ def XdotM(X,M):
 
 class DocEmbedderList:
     def __init__(self, *embedder_list):
+        if len(embedder_list)==0: embedder_list=[]
         self.embedders = embedder_list
 
-    def fit(self, lX, ly):
+
+    def fit(self, lX, ly, lV):
         for transformer in self.embedders:
-            transformer.fit(lX,ly)
+            transformer.fit(lX,ly,lV)
         return self
 
     def transform(self, lX):
@@ -145,11 +173,14 @@ class DocEmbedderList:
         return {l:hstacker(lZparts[l]) for l in langs}
 
 
-    def fit_transform(self, lX, ly):
-        return self.fit(lX, ly).transform(lX)
+    def fit_transform(self, lX, ly, lV):
+        return self.fit(lX, ly, lV).transform(lX)
 
     def best_params(self):
         return {'todo'}
+
+    def append(self, embedder):
+        self.embedders.append(embedder)
 
 # ------------------------------------------------------------------
 # Meta-Classifier
@@ -200,7 +231,8 @@ class Funnelling:
 
     def fit(self, lX, ly):
         lX = self.vectorizer.fit_transform(lX, ly)
-        lZ = self.first_tier.fit_transform(lX, ly)
+        lV = self.vectorizer.vocabulary()
+        lZ = self.first_tier.fit_transform(lX, ly, lV)
         self.meta.fit(lZ, ly)
 
     def predict(self, lX, ly=None):

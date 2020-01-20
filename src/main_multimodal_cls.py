@@ -3,7 +3,7 @@ from dataset_builder import MultilingualDataset
 # from learning.learners import *
 from learning.learners import FunnellingMultimodal
 from learning.transformers import Funnelling, PosteriorProbabilitiesEmbedder, MetaClassifier, \
-    TfidfVectorizerMultilingual, DocEmbedderList, WordClassEmbedder
+    TfidfVectorizerMultilingual, DocEmbedderList, WordClassEmbedder, MuseEmbedder
 from util.evaluation import *
 from optparse import OptionParser
 from util.file import exists
@@ -21,14 +21,17 @@ parser.add_option("-d", "--dataset", dest="dataset",
 parser.add_option("-o", "--output", dest="output",
                   help="Result file", type=str,  default='./results/results.csv')
 
-parser.add_option("-e", "--mode-embed", dest="mode_embed",
-                  help="Set the embedding to be used [none, unsupervised, supervised, both]", type=str, default='none')
+parser.add_option("-P", "--probs", dest="probs", action='store_true',
+                  help="Add posterior probabilities to the document embedding representation", default=False)
+
+parser.add_option("-S", "--supervised", dest="supervised", action='store_true',
+                  help="Add supervised (Word-Class Embeddings) to the document embedding representation", default=False)
+
+parser.add_option("-U", "--pretrained", dest="pretrained", action='store_true',
+                  help="Add pretrained MUSE embeddings to the document embedding representation", default=False)
 
 parser.add_option("-w", "--we-path", dest="we_path",
-                  help="Path to the polylingual word embeddings", default='/home/andreapdr/CLESA/')
-
-parser.add_option('-t', "--we-type", dest="we_type", help="Aligned embeddings to use [FastText, MUSE]", type=str,
-                  default='MUSE')
+                  help="Path to the MUSE polylingual word embeddings", default='../embeddings')
 
 parser.add_option("-s", "--set_c", dest="set_c",type=float,
                   help="Set the C parameter", default=1)
@@ -40,16 +43,12 @@ parser.add_option("-j", "--n_jobs", dest="n_jobs",type=int,
                   help="Number of parallel jobs (default is -1, all)", default=-1)
 
 parser.add_option("-p", "--pca", dest="max_labels_S", type=int,
-                  help="If smaller than number of target classes, PCA will be applied to supervised matrix. "
-                       "If set to 0 it will automatically search for the best number of components. "
-                       "If set to -1 it will apply PCA to the vstacked supervised matrix (PCA dim set to 50 atm)",
+                  help="If smaller than number of target classes, PCA will be applied to supervised matrix. ",
                   default=300)
 
-parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
-                  help="If smaller than Unsupervised Dimension, PCA will be applied to unsupervised matrix."
-                       " If set to 0 it will automatically search for the best number of components", default=300)
-
-parser.add_option("-l", dest="lang", type=str)
+# parser.add_option("-u", "--upca", dest="max_labels_U", type=int,
+#                   help="If smaller than Unsupervised Dimension, PCA will be applied to unsupervised matrix."
+#                        " If set to 0 it will automatically search for the best number of components", default=300)
 
 # parser.add_option("-a", dest="post_pca",
 #                   help="If set to True, will apply PCA to the z-space (posterior probabilities stacked along with "
@@ -57,13 +56,7 @@ parser.add_option("-l", dest="lang", type=str)
 
 
 def get_learner(calibrate=False, kernel='linear'):
-    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1,
-
-
-               # class_weight='balanced',
-
-
-               gamma='auto')
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=op.set_c, random_state=1, gamma='auto')
 
 
 def get_params(dense=False):
@@ -89,69 +82,32 @@ if __name__ == '__main__':
     data = MultilingualDataset.load(op.dataset)
     data.show_dimensions()
 
-    # data.set_view(languages=['en','it', 'pt', 'sv'], categories=list(range(10)))
-    # data.set_view(languages=[op.lang])
-    # data.set_view(categories=list(range(10)))
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
 
-    if op.set_c != -1:
-        meta_parameters = None
-    else:
-        meta_parameters = [{'C': [1, 1e3, 1e2, 1e1, 1e-1]}]
+    meta_parameters = None if op.set_c != -1 else [{'C': [1, 1e3, 1e2, 1e1, 1e-1]}]
 
-    # Embeddings and WCE config
-    _available_mode = ['none', 'unsupervised', 'supervised', 'both']
-    _available_type = ['MUSE', 'FastText']
-    assert op.mode_embed in _available_mode, f'{op.mode_embed} not in {_available_mode}'
-    assert op.we_type in _available_type, f'{op.we_type} not in {_available_type}'
+    result_id = f'{dataset_file}_Prob{op.probs}_WCE{op.supervised}(PCA{op.max_labels_S})_MUSE{op.pretrained}{"_optimC" if op.optimc else ""}'
 
-    if op.mode_embed == 'none':
-        config = {'unsupervised': False,
-                  'supervised': False,
-                  'we_type': None}
-        _config_id = 'None'
-    elif op.mode_embed == 'unsupervised':
-        config = {'unsupervised': True,
-                  'supervised': False,
-                  'we_type': op.we_type}
-        _config_id = 'M'
-    elif op.mode_embed == 'supervised':
-        config = {'unsupervised': False,
-                  'supervised': True,
-                  'we_type': None}
-        _config_id = 'F'
-    elif op.mode_embed == 'both':
-        config = {'unsupervised': True,
-                  'supervised': True,
-                  'we_type': op.we_type}
-        _config_id = 'M+F'
+    print(f'{result_id}')
 
-    config['reduction'] = 'PCA'
-    config['max_label_space'] = op.max_labels_S
-    config['dim_reduction_unsupervised'] = op.max_labels_U
-    # config['post_pca'] = op.post_pca
-    # config['plot_covariance_matrices'] = True
-
-    result_id = dataset_file + 'PolyEmbedd_andrea_' + _config_id + ('_optimC' if op.optimc else '')
-
-    print(f'### PolyEmbedd_andrea_{_config_id}\n')
-    # classifier = FunnellingMultimodal(we_path=op.we_path,
-    #                                   config=config,
-    #                                   first_tier_learner=get_learner(calibrate=True),
-    #                                   meta_learner=get_learner(calibrate=False, kernel='rbf'),
-    #                                   first_tier_parameters=None,  # TODO get_params(dense=False),--> first_tier should not be optimized - or not?
-    #                                   meta_parameters=get_params(dense=True),
-    #                                   n_jobs=op.n_jobs)
-
+    # text preprocessing
     tfidfvectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
-    post_prob = PosteriorProbabilitiesEmbedder(first_tier_learner=get_learner(calibrate=True), first_tier_parameters=None)
-    wce_proj = WordClassEmbedder()
-    doc_embedder = DocEmbedderList(post_prob, wce_proj)
-    # doc_embedder = DocEmbedderList(post_prob)
-    meta = MetaClassifier(meta_learner=SVC(), meta_parameters=get_params(dense=True))
-    classifier = Funnelling(vectorizer=tfidfvectorizer, first_tier=doc_embedder, meta=meta)
 
+    # document embedding modules
+    doc_embedder = DocEmbedderList()
+    if op.probs:
+        doc_embedder.append(PosteriorProbabilitiesEmbedder(first_tier_learner=get_learner(calibrate=True), first_tier_parameters=None))
+    if op.supervised:
+        doc_embedder.append(WordClassEmbedder(max_label_space=op.max_labels_S))
+    if op.pretrained:
+        doc_embedder.append(MuseEmbedder(op.we_path))
+
+    # metaclassifier
+    meta = MetaClassifier(meta_learner=SVC(), meta_parameters=get_params(dense=True))
+
+    # ensembling the modules
+    classifier = Funnelling(vectorizer=tfidfvectorizer, first_tier=doc_embedder, meta=meta)
 
     print('# Fitting ...')
     classifier.fit(lXtr, lytr)
@@ -163,7 +119,7 @@ if __name__ == '__main__':
     for lang in lXte.keys():
         macrof1, microf1, macrok, microk = l_eval[lang]
         metrics.append([macrof1, microf1, macrok, microk])
-        print('Lang %s: macro-F1=%.3f micro-F1=%.3f' % (lang, macrof1, microf1))
+        print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f}')
         # results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
         #                 (config['max_label_space'], classifier.best_components),
         #                 config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
