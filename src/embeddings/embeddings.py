@@ -21,6 +21,9 @@ class PretrainedEmbeddings(ABC):
 
     @classmethod
     def reindex(cls, words, word2index):
+        if isinstance(words, dict):
+            words = list(zip(*sorted(words.items(), key=lambda x: x[1])))[0]
+
         source_idx, target_idx = [], []
         for i, word in enumerate(words):
             if word not in word2index: continue
