@@ -74,6 +74,7 @@ if __name__ == '__main__':
 
     assert exists(op.dataset), 'Unable to find file '+str(op.dataset)
     assert not (op.set_c != 1. and op.optimc), 'Parameter C cannot be defined along with optim_c option'
+    assert op.probs or op.supervised or op.pretrained, 'empty set of document embeddings is not allowed'
 
     dataset_file = os.path.basename(op.dataset)
 
