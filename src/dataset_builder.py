@@ -13,6 +13,7 @@ from scipy.sparse import issparse
 import itertools
 from tqdm import tqdm
 import re
+from scipy.sparse import csr_matrix
 
 
 class MultilingualDataset:
@@ -68,27 +69,33 @@ class MultilingualDataset:
         if languages is not None:
             self.languages_view = languages
 
-    def training(self):
-        return self.lXtr(), self.lYtr()
+    def training(self, mask_numbers=False, target_as_csr=False):
+        return self.lXtr(mask_numbers), self.lYtr(as_csr=target_as_csr)
 
-    def test(self):
-        return self.lXte(), self.lYte()
+    def test(self, mask_numbers=False, target_as_csr=False):
+        return self.lXte(mask_numbers), self.lYte(as_csr=target_as_csr)
 
-    def lXtr(self):
-        return {lang: Xtr for (lang, ((Xtr, _, _), _)) in self.multiling_dataset.items() if
-                lang in self.langs()}
-        # return {lang:self.mask_numbers(Xtr) for (lang, ((Xtr,_,_),_)) in self.multiling_dataset.items() if lang in self.langs()}
+    def lXtr(self, mask_numbers=False):
+        proc = lambda x:_mask_numbers(x) if mask_numbers else x
+        # return {lang: Xtr for (lang, ((Xtr, _, _), _)) in self.multiling_dataset.items() if lang in self.langs()}
+        return {lang:proc(Xtr) for (lang, ((Xtr,_,_),_)) in self.multiling_dataset.items() if lang in self.langs()}
 
-    def lXte(self):
-        return {lang: Xte for (lang, (_, (Xte, _, _))) in self.multiling_dataset.items() if
-                lang in self.langs()}
-        # return {lang:self.mask_numbers(Xte) for (lang, (_,(Xte,_,_))) in self.multiling_dataset.items() if lang in self.langs()}
+    def lXte(self, mask_numbers=False):
+        proc = lambda x: _mask_numbers(x) if mask_numbers else x
+        # return {lang: Xte for (lang, (_, (Xte, _, _))) in self.multiling_dataset.items() if lang in self.langs()}
+        return {lang:proc(Xte) for (lang, (_,(Xte,_,_))) in self.multiling_dataset.items() if lang in self.langs()}
 
-    def lYtr(self):
-        return {lang:self.cat_view(Ytr) for (lang, ((_,Ytr,_),_)) in self.multiling_dataset.items() if lang in self.langs()}
+    def lYtr(self, as_csr=False):
+        lY = {lang:self.cat_view(Ytr) for (lang, ((_,Ytr,_),_)) in self.multiling_dataset.items() if lang in self.langs()}
+        if as_csr:
+            lY = {l:csr_matrix(Y) for l,Y in lY.items()}
+        return lY
 
-    def lYte(self):
-        return {lang:self.cat_view(Yte) for (lang, (_,(_,Yte,_))) in self.multiling_dataset.items() if lang in self.langs()}
+    def lYte(self, as_csr=False):
+        lY = {lang:self.cat_view(Yte) for (lang, (_,(_,Yte,_))) in self.multiling_dataset.items() if lang in self.langs()}
+        if as_csr:
+            lY = {l:csr_matrix(Y) for l,Y in lY.items()}
+        return lY
 
     def cat_view(self, Y):
         if hasattr(self, 'categories_view'):
@@ -107,10 +114,11 @@ class MultilingualDataset:
         return self.lYtr()[self.langs()[0]].shape[1]
 
     def show_dimensions(self):
+        def shape(X):
+            return X.shape if hasattr(X, 'shape') else len(X)
         for (lang, ((Xtr, Ytr, IDtr), (Xte, Yte, IDte))) in self.multiling_dataset.items():
             if lang not in self.langs(): continue
-            if hasattr(Xtr, 'shape') and hasattr(Xte, 'shape'):
-                print("Lang {}, Xtr={}, ytr={}, Xte={}, yte={}".format(lang, Xtr.shape, self.cat_view(Ytr).shape, Xte.shape, self.cat_view(Yte).shape))
+            print("Lang {}, Xtr={}, ytr={}, Xte={}, yte={}".format(lang, shape(Xtr), self.cat_view(Ytr).shape, shape(Xte), self.cat_view(Yte).shape))
 
     def show_category_prevalences(self):
         #pass
@@ -135,12 +143,24 @@ class MultilingualDataset:
     def set_labels(self, labels):
         self.labels = labels
 
-    def mask_numbers(self, data, number_mask='numbermask'):
-        mask = re.compile(r'\b[0-9][0-9.,-]*\b')
-        masked = []
-        for text in tqdm(data, desc='masking numbers'):
-            masked.append(mask.sub(number_mask, text))
-        return masked
+def _mask_numbers(data):
+    mask_moredigit = re.compile(r'\s[\+-]?\d{5,}([\.,]\d*)*\b')
+    mask_4digit = re.compile(r'\s[\+-]?\d{4}([\.,]\d*)*\b')
+    mask_3digit = re.compile(r'\s[\+-]?\d{3}([\.,]\d*)*\b')
+    mask_2digit = re.compile(r'\s[\+-]?\d{2}([\.,]\d*)*\b')
+    mask_1digit = re.compile(r'\s[\+-]?\d{1}([\.,]\d*)*\b')
+    masked = []
+    for text in tqdm(data, desc='masking numbers'):
+        text = ' ' + text
+        text = mask_moredigit.sub(' MoreDigitMask', text)
+        text = mask_4digit.sub(' FourDigitMask', text)
+        text = mask_3digit.sub(' ThreeDigitMask', text)
+        text = mask_2digit.sub(' TwoDigitMask', text)
+        text = mask_1digit.sub(' OneDigitMask', text)
+        masked.append(text.replace('.','').replace(',','').strip())
+    return masked
+
+
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -541,12 +561,120 @@ def prepare_rcv_datasets(outpath, rcv1_data_home, rcv2_data_home, wiki_data_home
     build_juxtaposed_matrices(name, langs, train_lang_doc_map, test_lang_doc_map, label_names, preprocess).save(yuxta_path)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Methods to generate full RCV and JRC datasets
+# ----------------------------------------------------------------------------------------------------------------------
+def full_rcv_(rcv1_data_home, rcv2_data_home, outpath, langs):
+
+
+    print('fetching the datasets')
+    rcv1_train_documents, labels_rcv1 = fetch_RCV1(rcv1_data_home, split='train')
+    rcv1_test_documents, labels_rcv1_test = fetch_RCV1(rcv1_data_home, split='test')
+    rcv2_documents, labels_rcv2 = fetch_RCV2(rcv2_data_home, [l for l in langs if l != 'en'])
+
+    filter_by_categories(rcv1_train_documents, labels_rcv2)
+    filter_by_categories(rcv1_test_documents, labels_rcv2)
+    filter_by_categories(rcv2_documents, labels_rcv1)
+
+    label_names = get_active_labels(rcv1_train_documents + rcv2_documents)
+    print('Active labels in RCV1/2 {}'.format(len(label_names)))
+
+    print('rcv1: {} train, {} test, {} categories'.format(len(rcv1_train_documents), len(rcv1_test_documents), len(label_names)))
+    print('rcv2: {} documents'.format(len(rcv2_documents)), Counter([doc.lang for doc in rcv2_documents]))
+
+    mlb = MultiLabelBinarizer()
+    mlb.fit([label_names])
+
+    all_docs = rcv1_train_documents + rcv1_test_documents + rcv2_documents
+    lang_docs = {lang: [d for d in all_docs if d.lang == lang] for lang in langs}
+
+    def get_ids(doclist):
+        return frozenset([d.id for d in doclist])
+
+    tr_ids = {'en': get_ids(rcv1_train_documents)}
+    te_ids = {'en': get_ids(rcv1_test_documents)}
+    for lang in langs:
+        if lang == 'en': continue
+        tr_ids[lang], te_ids[lang] = train_test_split([d.id for d in lang_docs[lang]], test_size=.3)
+
+    dataset = MultilingualDataset()
+    dataset.dataset_name = 'RCV1/2-full'
+    for lang in langs:
+        print(f'processing {lang} with {len(tr_ids[lang])} training documents and {len(te_ids[lang])} documents')
+        analyzer = CountVectorizer(
+            strip_accents='unicode', min_df=3, stop_words=stopwords.words(NLTK_LANGMAP[lang])
+        ).build_analyzer()
+
+        Xtr,Ytr,IDtr = zip(*[(d.text,d.categories,d.id) for d in lang_docs[lang] if d.id in tr_ids[lang]])
+        Xte,Yte,IDte = zip(*[(d.text,d.categories,d.id) for d in lang_docs[lang] if d.id in te_ids[lang]])
+        Xtr = [' '.join(analyzer(d)) for d in Xtr]
+        Xte = [' '.join(analyzer(d)) for d in Xte]
+        Ytr = mlb.transform(Ytr)
+        Yte = mlb.transform(Yte)
+        dataset.add(lang, _mask_numbers(Xtr), Ytr, _mask_numbers(Xte), Yte, IDtr, IDte)
+
+    dataset.save(outpath)
+
+
+def full_jrc_(jrc_data_home, langs, train_years, test_years, outpath, cat_policy='all', most_common_cat=300):
+
+    print('fetching the datasets')
+    cat_list = inspect_eurovoc(jrc_data_home, select=cat_policy)
+    training_docs, label_names = fetch_jrcacquis(
+        langs=langs, data_path=jrc_data_home, years=train_years, cat_filter=cat_list, cat_threshold=1, parallel=None, most_frequent=most_common_cat
+    )
+    test_docs, _ = fetch_jrcacquis(
+        langs=langs, data_path=jrc_data_home, years=test_years, cat_filter=label_names, parallel='force'
+    )
+
+    def _group_by_lang(doc_list, langs):
+        return {lang: [d for d in doc_list if d.lang == lang] for lang in langs}
+
+    training_docs = _group_by_lang(training_docs, langs)
+    test_docs = _group_by_lang(test_docs, langs)
+
+    mlb = MultiLabelBinarizer()
+    mlb.fit([label_names])
+
+    dataset = MultilingualDataset()
+    data.dataset_name = 'JRC-Acquis-full'
+    for lang in langs:
+        analyzer = CountVectorizer(
+            strip_accents='unicode', min_df=3, stop_words=stopwords.words(NLTK_LANGMAP[lang])
+        ).build_analyzer()
+
+        Xtr, Ytr, IDtr = zip(*[(d.text, d.categories, d.parallel_id + '__' + d.id) for d in training_docs[lang] if d.lang == lang])
+        Xte, Yte, IDte = zip(*[(d.text, d.categories, d.parallel_id + '__' + d.id) for d in test_docs[lang] if d.lang == lang])
+        Xtr = [' '.join(analyzer(d)) for d in Xtr]
+        Xte = [' '.join(analyzer(d)) for d in Xte]
+        Ytr = mlb.transform(Ytr)
+        Yte = mlb.transform(Yte)
+        dataset.add(lang, _mask_numbers(Xtr), Ytr, _mask_numbers(Xte), Yte, IDtr, IDte)
+
+    dataset.save(outpath)
+
+
 #-----------------------------------------------------------------------------------------------------------------------
 # MAIN BUILDER
 #-----------------------------------------------------------------------------------------------------------------------
 
 if __name__=='__main__':
     import sys
+    RCV1_PATH = '../Datasets/RCV1-v2/unprocessed_corpus'
+    RCV2_PATH = '../Datasets/RCV2'
+    JRC_DATAPATH = "../Datasets/JRC_Acquis_v3"
+    full_rcv_(RCV1_PATH, RCV2_PATH, outpath='../rcv2/rcv1-2_doclist_full_processed.pickle', langs=RCV2_LANGS_WITH_NLTK_STEMMING + ['en'])
+    # full_jrc_(JRC_DATAPATH, lang_set['JRC_NLTK'], train_years=list(range(1958, 2006)), test_years=[2006], outpath='../jrc_acquis/jrc_doclist_1958-2005vs2006_all_top300_full_processed.pickle', cat_policy='all', most_common_cat=300)
+    sys.exit(0)
+
+    # datasetpath = '../jrc_acquis/jrc_doclist_1958-2005vs2006_all_top300_full_processed.pickle' # '../rcv2/rcv1-2_doclist_full_processed.pickle'
+    # data = MultilingualDataset.load(datasetpath)
+    # data.dataset_name='JRC-Acquis-full'#'RCV1/2-full'
+    # for lang in RCV2_LANGS_WITH_NLTK_STEMMING + ['en']:
+    #     (Xtr, ytr, idtr), (Xte, yte, idte) = data.multiling_dataset[lang]
+    #     data.multiling_dataset[lang] = ((_mask_numbers(Xtr), ytr, idtr), (_mask_numbers(Xte), yte, idte))
+    # data.save('../jrc_acquis/jrc_doclist_1958-2005vs2006_all_top300_full_processed.pickle')#'../rcv2/rcv1-2_doclist_full_processed_2.pickle')
+    # sys.exit(0)
 
     assert len(sys.argv) == 5, "wrong number of arguments; required: " \
                                "<JRC_PATH> <RCV1_PATH> <RCV2_PATH> <WIKI_PATH> "

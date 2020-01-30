@@ -254,7 +254,7 @@ class NaivePolylingualClassifier:
             return {lang:self.model[lang].transform(lX[lang]) for lang in lX.keys()}
         else:
             langs = list(lX.keys())
-            scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].transform)(lX[lang]) for lang in langs)
+            scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].predict)(lX[lang]) for lang in langs)
             return {lang: scores[i] for i, lang in enumerate(langs)}
 
     def best_params(self):
@@ -297,7 +297,7 @@ class MonolingualClassifier:
             self.model = GridSearchCV(self.model, param_grid=self.parameters, refit=True, cv=5, n_jobs=self.n_jobs,
                                       error_score=0, verbose=10)
 
-        print('fitting:', self.model)
+        print(f'fitting: {self.model} on matrices of shape X={X.shape} Y={y.shape}')
         self.model.fit(X, y)
         if isinstance(self.model, GridSearchCV):
             self.best_params_ = self.model.best_params_

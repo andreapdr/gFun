@@ -2,15 +2,24 @@ import numpy as np
 
 class StandardizeTransformer:
 
-    def __init__(self, axis=0):
+    def __init__(self, axis=0, range=None):
+        assert range is None or isinstance(range, slice), 'wrong format for range, should either be None or a slice'
         self.axis = axis
-        self.yetfit=False
+        self.yetfit = False
+        self.range = range
 
     def fit(self, X):
         print('fitting Standardizer')
         std=np.std(X, axis=self.axis, ddof=1)
         self.std = np.clip(std, 1e-5, None)
         self.mean = np.mean(X, axis=self.axis)
+        if self.range is not None:
+            ones = np.ones_like(self.std)
+            zeros = np.zeros_like(self.mean)
+            ones[self.range] = self.std[self.range]
+            zeros[self.range] = self.mean[self.range]
+            self.std = ones
+            self.mean = zeros
         self.yetfit=True
         print('done\n')
         return self

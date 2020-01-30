@@ -204,6 +204,7 @@ class FastTextMUSE(PretrainedEmbeddings):
     def extract(self, words):
         source_idx, target_idx = PretrainedEmbeddings.reindex(words, self.embed.stoi)
         extraction = torch.zeros((len(words), self.dim()))
+        # extraction = torch.empty(len(words), self.dim()).normal_(0, 1)
         extraction[source_idx] = self.embed.vectors[target_idx]
         return extraction
 

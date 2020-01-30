@@ -44,7 +44,7 @@ def evaluate_method(polylingual_method, lX, ly, predictor=None, soft=False, retu
     tinit=time.time()
     print('prediction for test')
     assert set(lX.keys()) == set(ly.keys()), 'inconsistent dictionaries in evaluate'
-    n_jobs = polylingual_method.n_jobs
+    n_jobs = polylingual_method.n_jobs if hasattr(polylingual_method, 'n_jobs') else -1
 
     if predictor is None:
         predictor = polylingual_method.predict
