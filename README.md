@@ -3,7 +3,8 @@ This repository contains the Python code developed for the experiments conducted
 Concerning traditional machine learning the code implements variants to Funnelling algoirthm (TAT) proposed in the article "Esuli, A., Moreo, A., & Sebastiani, F. (2019). [Funnelling: A New Ensemble Method for Heterogeneous Transfer Learning and Its Application to Cross-Lingual Text Classification](https://dl.acm.org/citation.cfm?id=3326065). ACM Transactions on Information Systems (TOIS), 37(3), 37.".
 
 To form document representations we deployed publicly available word-embeddings:
-* MUSE  A. Conneau, G. Lample, L. Denoyer, MA. Ranzato, H. Jégou, (2018). [Word Translation without Parallel Data](https://arxiv.org/pdf/1710.04087.pdf)"
+* MUSE  "A. Conneau, G. Lample, L. Denoyer, MA. Ranzato, H. Jégou, (2018). [Word Translation without Parallel Data](https://arxiv.org/pdf/1710.04087.pdf)"
+As well as a method to build supervised word-embeddings:
 * Word-Class Embeddings "Moreo, A, Esuli, A. & Sebastiani, F. (2019). [Word-Class Embeddings for Multiclass Text Classification](https://arxiv.org/abs/1911.11506.pdf)"
 
 
