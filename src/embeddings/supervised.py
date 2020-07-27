@@ -1,7 +1,5 @@
 from data.tsr_function__ import get_supervised_matrix, get_tsr_matrix, information_gain, chi_square
 import numpy as np
-# from sklearn.decomposition import PCA
-# from sklearn.manifold import TSNE
 
 
 def zscores(x, axis=0): #scipy.stats.zscores does not avoid division by 0, which can indeed occur
@@ -68,31 +66,6 @@ def get_supervised_embeddings(X, Y, reduction, max_label_space=300, voc=None, la
                 outfile.write(token+'\n')
 
     return F
-
-    # if nC >= max_label_space:
-    #     if reduction == 'PCA':
-    #         if max_label_space == 0:
-    #             pca = PCA(n_components=Y.shape[1])
-    #             pca = pca.fit(F)
-    #             return pca.explained_variance_ratio_
-    #
-    #         print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
-    #               f'Applying PCA(n_components={max_label_space})')
-    #         pca = PCA(n_components=max_label_space)
-    #         F = pca.fit_transform(F)
-    #     elif reduction == 'TSNE':
-    #         print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
-    #               f'Applying t-SNE(n_components={max_label_space})')
-    #         tsne = TSNE(n_components=max_label_space)
-    #         F = tsne.fit_transform(F)
-    #     elif reduction == 'tSVD':
-    #         print(f'supervised matrix has more dimensions ({nC}) than the allowed limit {max_label_space}. '
-    #               f'Applying truncatedSVD(n_components={max_label_space})')
-    #         tSVD = TruncatedSVD(n_components=max_label_space)
-    #         F = tSVD.fit_transform(F)
-    #
-    # return F
-
 
 
 

@@ -1,15 +1,15 @@
 import numpy as np
 import time
-from embeddings.embeddings import WordEmbeddings, StorageEmbeddings
+# from embeddings.embeddings import WordEmbeddings, StorageEmbeddings
 from scipy.sparse import issparse
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import KFold
+# from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
-from sklearn.feature_extraction.text import TfidfVectorizer
-from transformers.StandardizeTransformer import StandardizeTransformer
-from sklearn.decomposition import PCA
-from models.cnn_class_bu import CNN_pdr
+# from sklearn.feature_extraction.text import TfidfVectorizer
+# from util_transformers.StandardizeTransformer import StandardizeTransformer
+# from sklearn.decomposition import PCA
+# from models.cnn_class_bu import CNN_pdr
 
 
 def _sort_if_sparse(X):
@@ -40,154 +40,154 @@ class TrivialRejector:
     def best_params(self): return {}
 
 
-class FunnellingPolylingualClassifier:
-    """
-    This classifier projects each document d into a language-independent feature space where each dimension fi is the
-    decision score phi_l(d,ci) of an auxiliary classifier phi_l trained on category ci for documents in language l;
-    then trains one single classifier for all documents in this space, irrespective of their originary language
-    """
-    def __init__(self, first_tier_learner, meta_learner, first_tier_parameters=None, meta_parameters=None, folded_projections=1,
-                 calmode='cal', n_jobs=-1):
-        """
-        :param first_tier_learner: the learner used in the first-tier level
-        :param meta_learner: the learner used in the second-tier level
-        :param first_tier_parameters: parameters for the learner in the doc_projector
-        :param meta_parameters: parameters for the learner in the z-space
-        :param folded_projections: if 1 then the model trains the auxiliar classifiers with all training data and
-        :param calmode: 'cal' to calibrate the base classifiers, 'nocal' to use the decision_function instead, or
-        :param n_jobs: number of parallel threads
-        'sigmoid' to use the sigmoid of the decision_function
-        projects the data before training the final classifier; if greater than one, the training set is split in as
-        many folds as indicated, and the projected space is composed by concatenating each fold prediction based on
-        models trained on the remaining folds. This should increase the generality of the space to unseen data.
-        """
-        assert folded_projections>0, "positive number of folds expected"
-        assert calmode in ['cal','nocal','sigmoid'], 'unknown calmode'
-        assert calmode!='cal' or first_tier_learner.probability, 'calmode=cal requires the learner to have probability=True'
-
-        self.fist_tier_learner = first_tier_learner
-        self.meta_learner = meta_learner
-        self.fist_tier_parameters=first_tier_parameters
-        self.meta_parameters = meta_parameters
-        self.doc_projector = NaivePolylingualClassifier(self.fist_tier_learner, self.fist_tier_parameters, n_jobs=n_jobs)
-        self.doc_projector_bu = NaivePolylingualClassifier(self.fist_tier_learner, self.fist_tier_parameters, n_jobs=n_jobs)
-        self.folded_projections = folded_projections
-        self.n_jobs = n_jobs
-        self.calmode = calmode
-
-    def _projection(self, doc_projector, lX):
-        """
-        Decides the projection function to be applied; predict_proba if the base classifiers are calibrated or
-        decision_function if otherwise
-        :param doc_projector: the document projector (a NaivePolylingualClassifier)
-        :param lX: {lang:matrix} to train
-        :return: the projection, applied with predict_proba or decision_function
-        """
-        if self.calmode=='cal':
-            return doc_projector.predict_proba(lX)
-        else:
-            l_decision_scores = doc_projector.decision_function(lX)
-            if self.calmode=='sigmoid':
-                def sigmoid(x): return 1 / (1 + np.exp(-x))
-                for lang in l_decision_scores.keys():
-                    l_decision_scores[lang] = sigmoid(l_decision_scores[lang])
-            return l_decision_scores
-
-    def _get_zspace(self, lXtr, lYtr, lXproj=None, lYproj=None):
-        """
-        Produces the vector space of posterior probabilities (in case the first-tier is calibrated) or of
-        decision scores (if otherwise). This space is here named zspace.
-        :param lXtr: {lang:matrix} to train
-        :param lYtr: {lang:labels} to train
-        :param lXproj: {lang:matrix} to project (if None, then projects the lXtr)
-        :param lYproj: {lang:labels} to stack in the same order (if None, then lYtr will be stacked)
-        :return: the projection of lXproj documents into the Z-space defined by the confidence scores of language-specific
-        models trained on lXtr, and the lYproj labels stacked consistently
-        """
-        repair_empty_folds = True
-        if lXproj is None and lYproj is None:
-            lXproj, lYproj = lXtr, lYtr
-            repair_empty_folds = False
-
-        print('fitting the projectors... {}'.format(lXtr.keys()))
-        self.doc_projector.fit(lXtr, lYtr)
-
-        print('projecting the documents')
-        langs = list(lXtr.keys())
-        lZ = self._projection(self.doc_projector, lXproj)
-
-        # if repair_empty_folds: #empty folds are replaced by the posterior probabilities generated by the non-folded version
-        empty_categories = self.doc_projector.empty_categories
-        lZ_bu = self._projection(self.doc_projector_bu, lXproj)
-
-        for lang in langs:
-            repair = empty_categories[lang]
-            lZ[lang][:,repair] = lZ_bu[lang][:,repair]
-
-        Z = np.vstack([lZ[lang] for lang in langs])  # Z is the language independent space
-        zy = np.vstack([lYproj[lang] for lang in langs])
-        return Z, zy
-
-    def _get_zspace_folds(self, lX, ly):
-        self.doc_projector_bu.fit(lX, ly)
-
-        print('split of {} folds'.format(self.folded_projections))
-        skf = KFold(n_splits=self.folded_projections, shuffle=True)
-
-        Z, zy = [], []
-        lfold = {lang: list(skf.split(lX[lang], ly[lang])) for lang in lX.keys()}
-        for fold in range(self.folded_projections):
-            print('fitting the projectors ({}/{})...'.format(fold + 1, self.folded_projections))
-            lfoldXtr, lfoldYtr = {}, {}
-            lfoldXte, lfoldYte = {}, {}
-            for lang in lX.keys():
-                train, test = lfold[lang][fold]
-                lfoldXtr[lang] = lX[lang][train]
-                lfoldYtr[lang] = ly[lang][train]
-                lfoldXte[lang] = lX[lang][test]
-                lfoldYte[lang] = ly[lang][test]
-            Zfold, zYfold = self._get_zspace(lfoldXtr, lfoldYtr, lfoldXte, lfoldYte)
-            Z.append(Zfold)
-            zy.append(zYfold)
-        # compose the Z-space as the union of all folded predictions
-        Z = np.vstack(Z)
-        zy = np.vstack(zy)
-        # refit the document projector with all examples to have a more reliable projector for test data
-        self.doc_projector = self.doc_projector_bu
-        return Z, zy
-
-    def fit(self, lX, ly, lZ=None, lzy=None):
-        tinit = time.time()
-        Z, zy = self._get_zspace(lX, ly) if self.folded_projections == 1 else self._get_zspace_folds(lX, ly)
-
-        #experimental: adds the posterior probabilities (computed outside) to the meta-classifier
-        if lZ is not None and lzy is not None:
-            zlangs = list(lZ.keys())
-            Z = np.vstack((Z, *[lZ[l] for l in zlangs]))
-            zy = np.vstack((zy, *[lzy[l] for l in zlangs]))
-
-        print('fitting the Z-space of shape={}'.format(Z.shape))
-        self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters, n_jobs=self.n_jobs)
-        self.model.fit(Z, zy)
-        self.time = time.time() - tinit
-
-        return self
-
-    def predict(self, lX, lZ=None):
-        """
-        :param lX: a dictionary {language_label: X csr-matrix}
-        :param lZ: a dictionary {language_label: Z matrix}; if specified, concats this representation
-        :return: a dictionary of predictions
-        """
-        lZ_ = self._projection(self.doc_projector, lX)
-        if lZ is not None:
-            lZ_ = {**lZ_, **lZ}
-        return _joblib_transform_multiling(self.model.predict, lZ_, n_jobs=self.n_jobs)
-
-    def best_params(self):
-        params = self.doc_projector.best_params()
-        params['meta'] = self.model.best_params()
-        return params
+# class FunnellingPolylingualClassifier:
+#     """
+#     This classifier projects each document d into a language-independent feature space where each dimension fi is the
+#     decision score phi_l(d,ci) of an auxiliary classifier phi_l trained on category ci for documents in language l;
+#     then trains one single classifier for all documents in this space, irrespective of their originary language
+#     """
+#     def __init__(self, first_tier_learner, meta_learner, first_tier_parameters=None, meta_parameters=None, folded_projections=1,
+#                  calmode='cal', n_jobs=-1):
+#         """
+#         :param first_tier_learner: the learner used in the first-tier level
+#         :param meta_learner: the learner used in the second-tier level
+#         :param first_tier_parameters: parameters for the learner in the doc_projector
+#         :param meta_parameters: parameters for the learner in the z-space
+#         :param folded_projections: if 1 then the model trains the auxiliar classifiers with all training data and
+#         :param calmode: 'cal' to calibrate the base classifiers, 'nocal' to use the decision_function instead, or
+#         :param n_jobs: number of parallel threads
+#         'sigmoid' to use the sigmoid of the decision_function
+#         projects the data before training the final classifier; if greater than one, the training set is split in as
+#         many folds as indicated, and the projected space is composed by concatenating each fold prediction based on
+#         models trained on the remaining folds. This should increase the generality of the space to unseen data.
+#         """
+#         assert folded_projections>0, "positive number of folds expected"
+#         assert calmode in ['cal','nocal','sigmoid'], 'unknown calmode'
+#         assert calmode!='cal' or first_tier_learner.probability, 'calmode=cal requires the learner to have probability=True'
+#
+#         self.fist_tier_learner = first_tier_learner
+#         self.meta_learner = meta_learner
+#         self.fist_tier_parameters=first_tier_parameters
+#         self.meta_parameters = meta_parameters
+#         self.doc_projector = NaivePolylingualClassifier(self.fist_tier_learner, self.fist_tier_parameters, n_jobs=n_jobs)
+#         self.doc_projector_bu = NaivePolylingualClassifier(self.fist_tier_learner, self.fist_tier_parameters, n_jobs=n_jobs)
+#         self.folded_projections = folded_projections
+#         self.n_jobs = n_jobs
+#         self.calmode = calmode
+#
+#     def _projection(self, doc_projector, lX):
+#         """
+#         Decides the projection function to be applied; predict_proba if the base classifiers are calibrated or
+#         decision_function if otherwise
+#         :param doc_projector: the document projector (a NaivePolylingualClassifier)
+#         :param lX: {lang:matrix} to train
+#         :return: the projection, applied with predict_proba or decision_function
+#         """
+#         if self.calmode=='cal':
+#             return doc_projector.predict_proba(lX)
+#         else:
+#             l_decision_scores = doc_projector.decision_function(lX)
+#             if self.calmode=='sigmoid':
+#                 def sigmoid(x): return 1 / (1 + np.exp(-x))
+#                 for lang in l_decision_scores.keys():
+#                     l_decision_scores[lang] = sigmoid(l_decision_scores[lang])
+#             return l_decision_scores
+#
+#     def _get_zspace(self, lXtr, lYtr, lXproj=None, lYproj=None):
+#         """
+#         Produces the vector space of posterior probabilities (in case the first-tier is calibrated) or of
+#         decision scores (if otherwise). This space is here named zspace.
+#         :param lXtr: {lang:matrix} to train
+#         :param lYtr: {lang:labels} to train
+#         :param lXproj: {lang:matrix} to project (if None, then projects the lXtr)
+#         :param lYproj: {lang:labels} to stack in the same order (if None, then lYtr will be stacked)
+#         :return: the projection of lXproj documents into the Z-space defined by the confidence scores of language-specific
+#         models trained on lXtr, and the lYproj labels stacked consistently
+#         """
+#         repair_empty_folds = True
+#         if lXproj is None and lYproj is None:
+#             lXproj, lYproj = lXtr, lYtr
+#             repair_empty_folds = False
+#
+#         print('fitting the projectors... {}'.format(lXtr.keys()))
+#         self.doc_projector.fit(lXtr, lYtr)
+#
+#         print('projecting the documents')
+#         langs = list(lXtr.keys())
+#         lZ = self._projection(self.doc_projector, lXproj)
+#
+#         # if repair_empty_folds: #empty folds are replaced by the posterior probabilities generated by the non-folded version
+#         empty_categories = self.doc_projector.empty_categories
+#         lZ_bu = self._projection(self.doc_projector_bu, lXproj)
+#
+#         for lang in langs:
+#             repair = empty_categories[lang]
+#             lZ[lang][:,repair] = lZ_bu[lang][:,repair]
+#
+#         Z = np.vstack([lZ[lang] for lang in langs])  # Z is the language independent space
+#         zy = np.vstack([lYproj[lang] for lang in langs])
+#         return Z, zy
+#
+#     def _get_zspace_folds(self, lX, ly):
+#         self.doc_projector_bu.fit(lX, ly)
+#
+#         print('split of {} folds'.format(self.folded_projections))
+#         skf = KFold(n_splits=self.folded_projections, shuffle=True)
+#
+#         Z, zy = [], []
+#         lfold = {lang: list(skf.split(lX[lang], ly[lang])) for lang in lX.keys()}
+#         for fold in range(self.folded_projections):
+#             print('fitting the projectors ({}/{})...'.format(fold + 1, self.folded_projections))
+#             lfoldXtr, lfoldYtr = {}, {}
+#             lfoldXte, lfoldYte = {}, {}
+#             for lang in lX.keys():
+#                 train, test = lfold[lang][fold]
+#                 lfoldXtr[lang] = lX[lang][train]
+#                 lfoldYtr[lang] = ly[lang][train]
+#                 lfoldXte[lang] = lX[lang][test]
+#                 lfoldYte[lang] = ly[lang][test]
+#             Zfold, zYfold = self._get_zspace(lfoldXtr, lfoldYtr, lfoldXte, lfoldYte)
+#             Z.append(Zfold)
+#             zy.append(zYfold)
+#         # compose the Z-space as the union of all folded predictions
+#         Z = np.vstack(Z)
+#         zy = np.vstack(zy)
+#         # refit the document projector with all examples to have a more reliable projector for test data
+#         self.doc_projector = self.doc_projector_bu
+#         return Z, zy
+#
+#     def fit(self, lX, ly, lZ=None, lzy=None):
+#         tinit = time.time()
+#         Z, zy = self._get_zspace(lX, ly) if self.folded_projections == 1 else self._get_zspace_folds(lX, ly)
+#
+#         #experimental: adds the posterior probabilities (computed outside) to the meta-classifier
+#         if lZ is not None and lzy is not None:
+#             zlangs = list(lZ.keys())
+#             Z = np.vstack((Z, *[lZ[l] for l in zlangs]))
+#             zy = np.vstack((zy, *[lzy[l] for l in zlangs]))
+#
+#         print('fitting the Z-space of shape={}'.format(Z.shape))
+#         self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters, n_jobs=self.n_jobs)
+#         self.model.fit(Z, zy)
+#         self.time = time.time() - tinit
+#
+#         return self
+#
+#     def predict(self, lX, lZ=None):
+#         """
+#         :param lX: a dictionary {language_label: X csr-matrix}
+#         :param lZ: a dictionary {language_label: Z matrix}; if specified, concats this representation
+#         :return: a dictionary of predictions
+#         """
+#         lZ_ = self._projection(self.doc_projector, lX)
+#         if lZ is not None:
+#             lZ_ = {**lZ_, **lZ}
+#         return _joblib_transform_multiling(self.model.predict, lZ_, n_jobs=self.n_jobs)
+#
+#     def best_params(self):
+#         params = self.doc_projector.best_params()
+#         params['meta'] = self.model.best_params()
+#         return params
 
 
 class NaivePolylingualClassifier:
@@ -323,410 +323,3 @@ class MonolingualClassifier:
 
     def best_params(self):
         return self.best_params_
-
-
-class FunnellingMultimodal(FunnellingPolylingualClassifier):
-    def __init__(self,
-                 we_path,
-                 config,
-                 first_tier_learner,
-                 meta_learner,
-                 first_tier_parameters=None,
-                 meta_parameters=None,
-                 folded_projections=1,
-                 calmode='cal',
-                 n_jobs=-1):
-
-        super().__init__(first_tier_learner,
-                         meta_learner,
-                         first_tier_parameters,
-                         meta_parameters,
-                         folded_projections,
-                         calmode,
-                         n_jobs)
-
-        self.pca_independent_space = PCA(n_components=50)
-        self.we_path = we_path
-        self.config = config
-        self.lang_word2idx = dict()
-        self.languages = []
-        self.lang_tfidf = {}
-        self.embedding_space = None
-        self.model = None
-        self.time = None
-        self.best_components = 'not set'    # if auto optimize pca, it will store the optimal number of components
-
-    def vectorize(self, lX, prediction=False):
-        langs = list(lX.keys())
-        print(f'# tfidf-vectorizing docs')
-        if prediction:
-
-            for lang in langs:
-                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
-                tfidf_vectorizer = self.lang_tfidf[lang]
-                lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            return self
-
-        for lang in langs:
-            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
-            self.languages.append(lang)
-            tfidf_vectorizer.fit(lX[lang])
-            lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer
-        return self
-
-    def _get_zspace(self, lXtr, lYtr):
-        print('\nfitting the projectors... {}'.format(list(lXtr.keys())))
-        self.doc_projector.fit(lXtr, lYtr)
-
-        print('\nprojecting the documents')
-        lZ = self._projection(self.doc_projector, lXtr)
-
-        return lZ, lYtr
-
-    def fit(self, lX, ly):
-        tinit = time.time()
-        print('Vectorizing documents...')
-        self.vectorize(lX)
-
-        for lang in self.languages:
-            print(f'{lang}->{lX[lang].shape}')
-
-        Z, zy = self._get_zspace(lX, ly)
-
-        if self.config['supervised'] or self.config['unsupervised']:
-            self.embedding_space = StorageEmbeddings(self.we_path).fit(self.config, lX, self.lang_word2idx, ly)
-            _embedding_space = self.embedding_space.transform(self.config, lX)
-            if self.config['max_label_space'] == 0:
-                _cum_dimension = _embedding_space[list(_embedding_space.keys())[0]].shape[1]
-                if _cum_dimension - 300 > 0:
-                    _temp = _cum_dimension - 300
-                else:
-                    _temp = _cum_dimension
-                self.best_components = _temp
-            # h_stacking posterior probabilities with (U) and/or (S) matrices
-            for lang in self.languages:
-                Z[lang] = np.hstack((Z[lang], _embedding_space[lang]))
-
-        # stacking Z space vertically
-        _vertical_Z = np.vstack([Z[lang] for lang in self.languages])
-        _vertical_Zy = np.vstack([zy[lang] for lang in self.languages])
-
-        self.standardizer = StandardizeTransformer()
-        _vertical_Z = self.standardizer.fit_transform(_vertical_Z)
-
-        # todo testing ...
-        # if self.config['post_pca']:
-        #     print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
-        #     self.pca_independent_space.fit(_vertical_Z)
-        #     _vertical_Z = self.pca_independent_space.transform(_vertical_Z)
-
-        print('fitting the Z-space of shape={}'.format(_vertical_Z.shape))
-        self.model = MonolingualClassifier(base_learner=self.meta_learner, parameters=self.meta_parameters,
-                                           n_jobs=self.n_jobs)
-        self.model.fit(_vertical_Z, _vertical_Zy)
-        self.time = time.time() - tinit
-        print(f'\nTotal training time elapsed: {round((self.time/60), 2)} min')
-
-    def predict(self, lX, ly):
-        print('Vectorizing documents')
-        self.vectorize(lX, prediction=True)
-        lZ = self._projection(self.doc_projector, lX)
-
-        if self.config['supervised'] or self.config['unsupervised']:
-            _embedding_space = self.embedding_space.transform(self.config, lX)
-
-            for lang in lX.keys():
-                lZ[lang] = np.hstack((lZ[lang], _embedding_space[lang]))
-
-        for lang in lZ.keys():
-            print(lZ[lang].shape)
-            # todo testing
-            lZ[lang] = self.standardizer.transform(lZ[lang])
-            # if self.config['post_pca']:
-            #     print(f'Applying PCA({"dim ?? TODO"}) to Z-space ...')
-            #     lZ[lang] = self.pca_independent_space.transform(lZ[lang])
-
-        return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
-
-
-class PolylingualEmbeddingsClassifier:
-    """
-    This classifier creates document embeddings by a tfidf weighted average of polylingual embeddings from the article
-    @article{conneau2017word,
-      title={Word translation without parallel data},
-      author={Conneau, Alexis and Lample, Guillaume and Ranzato, Marc'Aurelio and Denoyer, Ludovic and J{\'e}gou, Herv{\'e}},
-      journal={arXiv preprint arXiv:1710.04087},
-      year={2017}
-    }
-    url: https://github.com/facebookresearch/MUSE
-    """
-    def __init__(self, wordembeddings_path, config, learner, c_parameters=None, n_jobs=-1):
-        """
-        :param wordembeddings_path: the path to the directory containing the polylingual embeddings
-        :param learner: the learner
-        :param c_parameters: parameters for learner
-        :param n_jobs: the number of concurrent threads
-        """
-        self.wordembeddings_path = wordembeddings_path
-        self.config = config
-        self.learner = learner
-        self.c_parameters=c_parameters
-        self.n_jobs = n_jobs
-        self.lang_tfidf = {}
-        self.model = None
-        self.languages = []
-        self.lang_word2idx = dict()
-        self.embedding_space = None
-
-    def fit_vectorizers(self, lX):
-        for lang in lX.keys():
-            if lang not in self.lang_tfidf:
-                tfidf = TfidfVectorizer(sublinear_tf=True, use_idf=True)  # text is already processed
-                docs = lX[lang]
-                tfidf.fit(docs)
-                self.lang_tfidf[lang] = tfidf
-
-
-    def vectorize(self, lX, prediction=False):
-        langs = list(lX.keys())
-        print(f'# tfidf-vectorizing docs')
-        if prediction:
-
-            for lang in langs:
-                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
-                tfidf_vectorizer = self.lang_tfidf[lang]
-                lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            return self
-
-        for lang in langs:
-            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
-            self.languages.append(lang)
-            tfidf_vectorizer.fit(lX[lang])
-            lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer
-        return self
-
-    def embed(self, docs, lang):
-        assert lang in self.lang_tfidf, 'unknown language'
-        tfidf_vectorizer = self.lang_tfidf[lang]
-        V = tfidf_vectorizer.vocabulary_
-        Xweights = tfidf_vectorizer.transform(docs)
-
-        print('loading word embeddings for ' + lang)
-        we = WordEmbeddings.load(self.wordembeddings_path, lang)
-
-        nD = len(docs)
-        doc_vecs = np.zeros((nD, we.dim()))
-
-        for i, doc in enumerate(docs):
-            print('\r\tcomplete {:.3f}%'.format(100 * (i + 1) / nD), end='')
-            # averaging with tfidf (summing each word only once, since the frequency is already controlled)
-            for w in set(doc.split()):
-                if w in we and w in V:
-                    doc_vecs[i] += (we[w] * Xweights[i, V[w]])
-            # works much worse with idf; works much worse with document l2-normalization
-        print()
-
-        return doc_vecs
-
-    def fit(self, lX, ly):
-        """
-        :param lX: a dictionary {language_label: [list of preprocessed documents]}
-        :param ly: a dictionary {language_label: ndarray of shape (ndocs, ncats) binary labels}
-        :return: self
-        """
-        tinit = time.time()
-        langs = list(lX.keys())
-        WEtr, Ytr = [], []
-        # self.fit_vectorizers(lX) # if already fit, does nothing
-        self.vectorize(lX)
-        # config = {'unsupervised' : False, 'supervised': True}
-        self.embedding_space = StorageEmbeddings(self.wordembeddings_path).fit(self.config, lX,  self.lang_word2idx, ly)
-        WEtr = self.embedding_space.transform(self.config, lX)
-        # for lang in langs:
-        #     WEtr.append(self.embed(lX[lang], lang)) # todo embed with other matrices
-        #     Ytr.append(ly[lang])
-
-        WEtr = np.vstack([WEtr[lang] for lang in langs])
-        Ytr = np.vstack([ly[lang] for lang in langs])
-        self.embed_time = time.time() - tinit
-
-        print('fitting the WE-space of shape={}'.format(WEtr.shape))
-        self.model = MonolingualClassifier(base_learner=self.learner, parameters=self.c_parameters, n_jobs=self.n_jobs)
-        self.model.fit(WEtr, Ytr)
-        self.time = time.time() - tinit
-        return self
-
-    def predict(self, lX, lY):
-        """
-        :param lX: a dictionary {language_label: [list of preprocessed documents]}
-        """
-        assert self.model is not None, 'predict called before fit'
-        self.vectorize(lX, prediction=True)
-        langs = list(lX.keys())
-        lWEte = self.embedding_space.transform(self.config, lX)
-        # lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
-        return _joblib_transform_multiling(self.model.transform, lWEte, n_jobs=self.n_jobs)
-
-    def predict_proba(self, lX):
-        """
-        :param lX: a dictionary {language_label: [list of preprocessed documents]}
-        """
-        assert self.model is not None, 'predict called before fit'
-        langs = list(lX.keys())
-        lWEte = {lang:self.embed(lX[lang], lang) for lang in langs} # parallelizing this may consume too much memory
-        return _joblib_transform_multiling(self.model.predict_proba, lWEte, n_jobs=self.n_jobs)
-
-    def best_params(self):
-        return self.model.best_params()
-
-
-class MonolingualNetSvm:
-    """
-    testing: funnelling with NN managing word embeddings compositionality. An ensemble of n-SVMs (n equals to the
-    number of training languages) is first fit on the data, generating the documents projection in the Z-space. Next,
-    the projection are fed to a single NN with their respective document embeddings. The documents are projected into
-    the embedding space while preserving their dimensionality (output dim is 300). These projection are horizonatally
-    concatenated with the respective projection and passed through a fC layer with sigmoid act and output dim equal
-    to the number of target classes.
-    # TODO ATM testing with only 1 language
-    """
-    def __init__(self, lX, ly, first_tier_learner, first_tier_parameters, n_jobs):
-        self.lX = lX
-        self.ly = ly
-        # SVM Attributes
-        self.doc_projector = NaivePolylingualClassifier(first_tier_learner, first_tier_parameters,
-                                                        n_jobs=n_jobs)
-        self.calmode = 'cal'
-        self.languages = []
-        self.lang_word2idx = dict()
-        self.lang_tfidf = {}
-        self.base_learner = 'TODO'
-        self.parameters = 'TODO'
-        # NN Attributes
-        self.NN = 'TODO'
-
-
-    def load_preprocessed(self):
-        """
-        in order to speed up the process, documents are first tokenized in the "main". Here, tokenized docs, word_index, and
-        targets are loaded.
-        :return: dict[lang] = (word_index, tokenized_docs, targets)
-        """
-        import pickle
-        with open('/home/andreapdr/CLESA/preprocessed_dataset_nn/rcv1-2_train.pickle', 'rb') as f:
-            return pickle.load(f)
-
-    def _build_embedding_matrix(self, lang, word_index):
-        """
-        build embedding matrix by filtering out OOV embeddings
-        :param lang:
-        :param word_index:
-        :return: filtered embedding matrix
-        """
-        from embeddings.embeddings import EmbeddingsAligned
-        type = 'MUSE'
-        path = '/home/andreapdr/CLESA/'
-        MUSE = EmbeddingsAligned(type, path, lang, word_index.keys())
-        return MUSE
-
-    def get_data_and_embed(self, data_dict):
-        from keras.preprocessing.sequence import pad_sequences
-
-        langs = data_dict.keys()
-        lang_embedding_matrix = dict()
-        nn_lXtr = dict()
-        nn_lytr = dict()
-
-        for lang in langs:
-            lang_embedding_matrix[lang] = self._build_embedding_matrix(lang, data_dict[lang][0])
-            nn_lXtr[lang] = pad_sequences(data_dict[lang][1], 100, padding='post')
-            nn_lytr[lang] = [data_dict[lang][2]]
-
-        return  nn_lXtr, nn_lytr, lang_embedding_matrix
-
-    def svm_vectorize(self, lX, prediction=False):
-        langs = list(lX.keys())
-        print(f'# tfidf-vectorizing docs')
-        if prediction:
-            for lang in langs:
-                assert lang in self.lang_tfidf.keys(), 'no tf-idf for given language'
-                tfidf_vectorizer = self.lang_tfidf[lang]
-                lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            return self
-        for lang in langs:
-            tfidf_vectorizer = TfidfVectorizer(sublinear_tf=True, use_idf=True)
-            self.languages.append(lang)
-            tfidf_vectorizer.fit(lX[lang])
-            lX[lang] = tfidf_vectorizer.transform(lX[lang])
-            self.lang_word2idx[lang] = tfidf_vectorizer.vocabulary_
-            self.lang_tfidf[lang] = tfidf_vectorizer
-        return lX
-
-    def _get_zspace(self, lXtr, lYtr):
-        print('\nfitting the projectors... {}'.format(list(lXtr.keys())))
-        self.doc_projector.fit(lXtr, lYtr)
-
-        print('\nprojecting the documents')
-        lZ = self._projection(self.doc_projector, lXtr)
-
-        return lZ, lYtr
-
-    def _projection(self, doc_projector, lX):
-        """
-        Decides the projection function to be applied; predict_proba if the base classifiers are calibrated or
-        decision_function if otherwise
-        :param doc_projector: the document projector (a NaivePolylingualClassifier)
-        :param lX: {lang:matrix} to train
-        :return: the projection, applied with predict_proba or decision_function
-        """
-        if self.calmode=='cal':
-            return doc_projector.predict_proba(lX)
-        else:
-            l_decision_scores = doc_projector.decision_function(lX)
-            if self.calmode=='sigmoid':
-                def sigmoid(x): return 1 / (1 + np.exp(-x))
-                for lang in l_decision_scores.keys():
-                    l_decision_scores[lang] = sigmoid(l_decision_scores[lang])
-            return l_decision_scores
-
-    def fit(self):
-        """
-        # 1. Fit SVM to generate posterior probabilities:
-        #   1.1 Gather documents and vectorize them as in other SVM classifiers
-        # 2. Fit NN
-        #   2.1 Gather documents and build NN dataset by indexing wrt embedding matrix
-        #   2.2 Fit NN first-layer to generate compositional doc embedding
-        #   2.3 H-stack doc-embed and posterior P
-        #   2.4 Feed stacked vector to output layer (sigmoid act): output Nc
-        #   2.5 Train it...
-        """
-
-        # load pre-processed data
-        data_dict = self.load_preprocessed()
-        # build embedding matrices and neural network document training set
-        nn_lXtr, nn_lytr, lang_embedding_matrix = self.get_data_and_embed(data_dict)
-        # TF-IDF vectorzing documents for SVM classifier
-        svm_lX = self.svm_vectorize(self.lX)
-
-        # just testing on a smaller subset of data
-        test_svm_lX = dict()
-        test_svm_ly = dict()
-        test_svm_lX['it'] = svm_lX['it'][:10, :]
-        test_svm_ly['it'] = self.ly['it'][:10, :]
-        test_nn_data = nn_lXtr['it'][:10]
-
-        # projecting document into Z space by SVM
-        svm_Z, _ = self._get_zspace(test_svm_lX, test_svm_ly)
-
-        # initializing net and forward pass
-        net = CNN_pdr(73, 1, 300, len(lang_embedding_matrix['it'].vectors), 300, lang_embedding_matrix['it'].vectors)
-        out = net.forward(test_nn_data, svm_Z['it'])
-
-        print('TODO')
-
-    def net(self):
-        pass

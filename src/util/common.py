@@ -1,4 +1,5 @@
 import warnings
+import time
 from sklearn.svm import SVC
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
@@ -143,6 +144,15 @@ class Index:
 
             embedding_parts.append(F)
 
+        make_dumps = False
+        if make_dumps:
+            print(f'Dumping Embedding Matrices ...')
+            import pickle
+            with open(f'../dumps/dump_{self.lang}_rcv.pkl', 'wb') as outfile:
+                pickle.dump((self.lang, embedding_parts, self.word2index), outfile)
+            with open(f'../dumps/corpus_{self.lang}_rcv.pkl', 'wb') as outfile2:
+                pickle.dump((self.lang, self.devel_raw, self.devel_target), outfile2)
+
         self.embedding_matrix = torch.cat(embedding_parts, dim=1)
 
         print(f'[embedding matrix for lang {self.lang} has shape {self.embedding_matrix.shape}]')
@@ -155,6 +165,7 @@ class MultilingualIndex:
     def __init__(self): #, add_language_trace=False):
         self.l_index = {}
         self.l_vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
+        # self.l_vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True, max_features=25000)
         # self.add_language_trace=add_language_trace
 
     def index(self, l_devel_raw, l_devel_target, l_test_raw, l_pretrained_vocabulary):
@@ -189,30 +200,42 @@ class MultilingualIndex:
             #     pretrained_embeddings = torch.cat([pretrained_embeddings, lang_trace], dim=1)
 
 
-    def posterior_probabilities(self, max_training_docs_by_lang=5000):
+    def posterior_probabilities(self, max_training_docs_by_lang=5000, store_posteriors=False, stored_post=False):
         # choose a maximum of "max_training_docs_by_lang" for training the calibrated SVMs
+        timeit = time.time()
         lXtr = {l:Xtr for l,Xtr in self.get_lXtr().items()}
         lYtr = {l:Ytr for l,Ytr in self.l_train_target().items()}
-        for l in self.langs:
-            n_elements = lXtr[l].shape[0]
-            if n_elements > max_training_docs_by_lang:
-                choice = np.random.permutation(n_elements)[:max_training_docs_by_lang]
-                lXtr[l] = lXtr[l][choice]
-                lYtr[l] = lYtr[l][choice]
+        if not stored_post:
+            for l in self.langs:
+                n_elements = lXtr[l].shape[0]
+                if n_elements > max_training_docs_by_lang:
+                    choice = np.random.permutation(n_elements)[:max_training_docs_by_lang]
+                    lXtr[l] = lXtr[l][choice]
+                    lYtr[l] = lYtr[l][choice]
 
-        # train the posterior probabilities embedder
-        print('[posteriors] training a calibrated SVM')
-        learner = SVC(kernel='linear', probability=True, cache_size=1000, C=1, random_state=1, gamma='auto')
-        prob_embedder = PosteriorProbabilitiesEmbedder(learner, l2=False)
-        prob_embedder.fit(lXtr, lYtr)
+            # train the posterior probabilities embedder
+            print('[posteriors] training a calibrated SVM')
+            learner = SVC(kernel='linear', probability=True, cache_size=1000, C=1, random_state=1, gamma='auto')
+            prob_embedder = PosteriorProbabilitiesEmbedder(learner, l2=False)
+            prob_embedder.fit(lXtr, lYtr)
 
-        # transforms the training, validation, and test sets into posterior probabilities
-        print('[posteriors] generating posterior probabilities')
-        lPtr = prob_embedder.transform(self.get_lXtr())
-        lPva = prob_embedder.transform(self.get_lXva())
-        lPte = prob_embedder.transform(self.get_lXte())
-
-        print('[posteriors] done')
+            # transforms the training, validation, and test sets into posterior probabilities
+            print('[posteriors] generating posterior probabilities')
+            lPtr = prob_embedder.transform(self.get_lXtr())
+            lPva = prob_embedder.transform(self.get_lXva())
+            lPte = prob_embedder.transform(self.get_lXte())
+        # NB: Check splits indices !
+            if store_posteriors:
+                import pickle
+                with open('../dumps/posteriors_fulljrc.pkl', 'wb') as outfile:
+                    pickle.dump([lPtr, lPva, lPte], outfile)
+                    print(f'Successfully dumped posteriors!')
+        else:
+            import pickle
+            with open('../dumps/posteriors_fulljrc.pkl', 'rb') as infile:
+                lPtr, lPva, lPte = pickle.load(infile)
+                print(f'Successfully loaded stored posteriors!')
+        print(f'[posteriors] done in {time.time() - timeit}')
         return lPtr, lPva, lPte
 
     def get_lXtr(self):

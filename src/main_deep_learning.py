@@ -1,6 +1,6 @@
 import argparse
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, MultiStepLR
 from dataset_builder import MultilingualDataset
 from learning.transformers import load_muse_embeddings
 from models.lstm_class import RNNMultilingualClassifier
@@ -9,8 +9,6 @@ from util.early_stop import EarlyStopping
 from util.common import *
 from util.file import create_if_not_exist
 from time import time
-from embeddings.pretrained import *
-from os.path import join
 from tqdm import tqdm
 from util.evaluation import evaluate
 from util.file import get_file_name
@@ -100,7 +98,7 @@ def main():
 
     # Loading the dataset
     data = MultilingualDataset.load(opt.dataset)
-    # data.set_view(languages=['de', 'fr', 'sv', 'da', 'es', 'it'])
+    data.set_view(languages=['de', 'fr']) #, 'it', 'en']) # 'sv', 'da', 'es', 'it'])
     data.show_dimensions()
     langs = data.langs()
     l_devel_raw, l_devel_target = data.training(target_as_csr=True)
@@ -108,6 +106,7 @@ def main():
 
     # Loading the MUSE pretrained embeddings (only if requested)
     lpretrained, lpretrained_vocabulary = load_pretrained_embeddings(opt.we_path, langs)
+    # lpretrained_vocabulary = none_dict(langs)   # do not keep track of words known in pretrained embeddings vocabulary that are also present in test set
 
     # Data preparation: indexing / splitting / embedding matrices (pretrained + supervised) / posterior probs
     multilingual_index = MultilingualIndex()
@@ -115,9 +114,25 @@ def main():
     multilingual_index.train_val_split(val_prop=0.2, max_val=2000, seed=opt.seed)
     multilingual_index.embedding_matrices(lpretrained, opt.supervised)
     if opt.posteriors:
-        lPtr, lPva, lPte = multilingual_index.posterior_probabilities(max_training_docs_by_lang=opt.svm_max_docs)
+        lPtr, lPva, lPte = multilingual_index.posterior_probabilities(max_training_docs_by_lang=5000, store_posteriors=True) #stored_post=True) #opt.svm_max_docs)
     else:
         lPtr, lPva, lPte = None, None, None
+
+    # just_test = False
+    # if just_test:
+    #
+    #     model = torch.load(
+    #         '../checkpoint/rnn(H512)-Muse-WCE-Posteriors-(trainable)-jrc_doclist_1958-2005vs2006_all_top300_full_processed.pickle')
+    #     criterion = torch.nn.BCEWithLogitsLoss().cuda()
+    #
+    #     # batcher_train = Batch(opt.batch_size, batches_per_epoch=10, languages=langs, lpad=multilingual_index.l_pad())
+    #
+    #     batcher_eval = Batch(opt.batch_size, batches_per_epoch=-1, languages=langs, lpad=multilingual_index.l_pad())
+    #     l_test_index = multilingual_index.l_test_index()
+    #     epoch = 1
+    #     tinit = time()
+    #     test(model, batcher_eval, l_test_index, lPte, l_test_target, tinit, epoch, logfile, criterion, 'te')
+    #     exit('Loaded')
 
     # Model initialization
     model = init_Net(data.num_categories(), multilingual_index)
@@ -130,7 +145,7 @@ def main():
 
     tinit = time()
     create_if_not_exist(opt.checkpoint_dir)
-    early_stop = EarlyStopping(model, patience=opt.patience, checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_file_name(opt.dataset)}')
+    early_stop = EarlyStopping(model, optimizer=optim, patience=opt.patience, checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_file_name(opt.dataset)}')
 
     l_train_index, l_train_target = multilingual_index.l_train()
     l_val_index, l_val_target = multilingual_index.l_val()
@@ -155,7 +170,6 @@ def main():
                 break
 
     # training is over
-
     # restores the best model according to the Mf1 of the validation set (only when plotmode==False)
     # stoptime = early_stop.stop_time - tinit
     # stopepoch = early_stop.best_epoch
@@ -164,6 +178,8 @@ def main():
     if opt.plotmode==False:
         print('-' * 80)
         print('Training over. Performing final evaluation')
+
+        # torch.cuda.empty_cache()
         model = early_stop.restore_checkpoint()
 
         if opt.val_epochs>0:
@@ -183,10 +199,14 @@ def get_lr(optimizer):
 
 
 def train(model, batcher, ltrain_index, ltrain_posteriors, lytr, tinit, logfile, criterion, optim, epoch, method_name):
+    _dataset_path = opt.dataset.split('/')[-1].split('_')
+    dataset_id = _dataset_path[0] + _dataset_path[-1]
+
     loss_history = []
     model.train()
     for idx, (batch, post, target, lang) in enumerate(batcher.batchify(ltrain_index, ltrain_posteriors, lytr)):
         optim.zero_grad()
+        _out = model(batch,post, lang)
         loss = criterion(model(batch, post, lang), target)
         loss.backward()
         clip_gradient(model)
@@ -195,7 +215,7 @@ def train(model, batcher, ltrain_index, ltrain_posteriors, lytr, tinit, logfile,
 
         if idx % opt.log_interval == 0:
             interval_loss = np.mean(loss_history[-opt.log_interval:])
-            print(f'{opt.dataset} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
+            print(f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
 
     mean_loss = np.mean(interval_loss)
     logfile.add_row(epoch=epoch, measure='tr_loss', value=mean_loss, timelapse=time() - tinit)
@@ -203,6 +223,8 @@ def train(model, batcher, ltrain_index, ltrain_posteriors, lytr, tinit, logfile,
 
 
 def test(model, batcher, ltest_index, ltest_posteriors, lyte, tinit, epoch, logfile, criterion, measure_prefix):
+
+    loss_history = []
     model.eval()
     langs = sorted(ltest_index.keys())
     predictions = {l:[] for l in langs}
@@ -214,6 +236,7 @@ def test(model, batcher, ltest_index, ltest_posteriors, lyte, tinit, epoch, logf
         prediction = predict(logits)
         predictions[lang].append(prediction)
         yte_stacked[lang].append(target.detach().cpu().numpy())
+        loss_history.append(loss)
 
     ly  = {l:np.vstack(yte_stacked[l]) for l in langs}
     ly_ = {l:np.vstack(predictions[l]) for l in langs}
@@ -224,17 +247,15 @@ def test(model, batcher, ltest_index, ltest_posteriors, lyte, tinit, epoch, logf
         metrics.append([macrof1, microf1, macrok, microk])
         if measure_prefix=='te':
             print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f}')
-        # results.add_row('PolyEmbed_andrea', 'svm', _config_id, config['we_type'],
-        #                 (config['max_label_space'], classifier.best_components),
-        #                 config['dim_reduction_unsupervised'], op.optimc, op.dataset.split('/')[-1], classifier.time,
-        #                 lang, macrof1, microf1, macrok, microk, '')
     Mf1, mF1, MK, mk = np.mean(np.array(metrics), axis=0)
     print(f'[{measure_prefix}] Averages: MF1, mF1, MK, mK [{Mf1:.5f}, {mF1:.5f}, {MK:.5f}, {mk:.5f}]')
 
-    # logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-F1', value=Mf1, timelapse=tend)
-    # logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-F1', value=mf1, timelapse=tend)
-    # logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-accuracy', value=acc, timelapse=tend)
-    # logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-loss', value=loss, timelapse=tend)
+    mean_loss = np.mean(loss_history)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-F1', value=Mf1, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-F1', value=mF1, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-K', value=MK, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-K', value=mk, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-loss', value=mean_loss, timelapse=time() - tinit)
 
     return Mf1
 

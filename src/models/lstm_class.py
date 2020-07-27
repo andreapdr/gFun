@@ -27,7 +27,7 @@ class RNNMultilingualClassifier(nn.Module):
         self.n_layers = 1
         self.n_directions = 1
 
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.6)
 
         lstm_out = 256
         ff1 = 512
@@ -45,7 +45,7 @@ class RNNMultilingualClassifier(nn.Module):
                 llearnable_embeddings[l] = learnable_embeddings
                 self.embedding_length = embedding_length
 
-            # self.rnn = nn.LSTM(self.embedding_length, hidden_size, dropout=0.2 if self.n_layers>1 else 0, num_layers=self.n_layers, bidirectional=(self.n_directions==2))
+            # self.lstm = nn.LSTM(self.embedding_length, hidden_size, dropout=0.2 if self.n_layers>1 else 0, num_layers=self.n_layers, bidirectional=(self.n_directions==2))
             self.rnn = nn.GRU(self.embedding_length, hidden_size)
             self.linear0 = nn.Linear(hidden_size * self.n_directions, lstm_out)
             self.lpretrained_embeddings.update(lpretrained_embeddings)

@@ -10,7 +10,7 @@ import time
 from sklearn.decomposition import PCA
 from joblib import Parallel, delayed
 from scipy.sparse import issparse, vstack, hstack
-from transformers.StandardizeTransformer import StandardizeTransformer
+from util_transformers.StandardizeTransformer import StandardizeTransformer
 from util.SIF_embed import remove_pc
 from sklearn.preprocessing import normalize
 from sklearn.svm import SVC
@@ -127,22 +127,26 @@ class PosteriorProbabilitiesEmbedder:
         print(f'generating posterior probabilities for {sum([X.shape[0] for X in lX.values()])} the documents')
         return self.doc_projector.predict_proba(lX)
 
+    def _get_output_dim(self):
+        return len(self.doc_projector.model['da'].model.classes_)
+
 
 class MuseEmbedder:
 
-    def __init__(self, path, lV=None, l2=True, n_jobs=-1, featureweight=FeatureWeight()):
+    def __init__(self, path, lV=None, l2=True, n_jobs=-1, featureweight=FeatureWeight(), sif=False):
         self.path=path
         self.lV = lV
         self.l2 = l2
         self.n_jobs = n_jobs
         self.featureweight = featureweight
+        self.sif = sif
 
     def fit(self, lX, ly, lV=None):
         assert lV is not None or self.lV is not None, 'lV not specified'
         self.langs = sorted(lX.keys())
         self.MUSE = load_muse_embeddings(self.path, self.langs, self.n_jobs)
         lWordList = {l:self._get_wordlist_from_word2index(lV[l]) for l in self.langs}
-        self.MUSE = {l:Muse.extract(lWordList[l]).numpy() for l,Muse in self.MUSE}
+        self.MUSE = {l:Muse.extract(lWordList[l]).numpy() for l,Muse in self.MUSE.items()}
         self.featureweight.fit(lX, ly)
         return self
 
@@ -150,7 +154,7 @@ class MuseEmbedder:
         MUSE = self.MUSE
         lX = self.featureweight.transform(lX)
         XdotMUSE = Parallel(n_jobs=self.n_jobs)(
-            delayed(XdotM)(lX[lang], MUSE[lang]) for lang in self.langs
+            delayed(XdotM)(lX[lang], MUSE[lang], self.sif) for lang in self.langs
         )
         lMuse = {l: XdotMUSE[i] for i, l in enumerate(self.langs)}
         lMuse = _normalize(lMuse, self.l2)
@@ -162,14 +166,18 @@ class MuseEmbedder:
     def _get_wordlist_from_word2index(self, word2index):
         return list(zip(*sorted(word2index.items(), key=lambda x: x[1])))[0]
 
+    def _get_output_dim(self):
+        return self.MUSE['da'].shape[1]
+
 
 class WordClassEmbedder:
 
-    def __init__(self, l2=True, n_jobs=-1, max_label_space=300, featureweight=FeatureWeight()):
+    def __init__(self, l2=True, n_jobs=-1, max_label_space=300, featureweight=FeatureWeight(), sif=False):
         self.n_jobs = n_jobs
         self.l2 = l2
         self.max_label_space=max_label_space
         self.featureweight = featureweight
+        self.sif = sif
 
     def fit(self, lX, ly, lV=None):
         self.langs = sorted(lX.keys())
@@ -184,7 +192,7 @@ class WordClassEmbedder:
         lWCE = self.lWCE
         lX = self.featureweight.transform(lX)
         XdotWCE = Parallel(n_jobs=self.n_jobs)(
-            delayed(XdotM)(lX[lang], lWCE[lang])for lang in self.langs
+            delayed(XdotM)(lX[lang], lWCE[lang], self.sif)for lang in self.langs
         )
         lwce = {l: XdotWCE[i] for i, l in enumerate(self.langs)}
         lwce = _normalize(lwce, self.l2)
@@ -192,6 +200,9 @@ class WordClassEmbedder:
 
     def fit_transform(self, lX, ly, lV=None):
         return self.fit(lX, ly).transform(lX)
+
+    def _get_output_dim(self):
+        return 73
 
 
 class DocEmbedderList:
@@ -201,6 +212,7 @@ class DocEmbedderList:
         if len(embedder_list)==0: embedder_list=[]
         self.embedders = embedder_list
         self.aggregation = aggregation
+        print(f'Aggregation mode: {self.aggregation}')
 
     def fit(self, lX, ly, lV=None):
         for transformer in self.embedders:
@@ -238,16 +250,25 @@ class DocEmbedderList:
         langs = sorted(lX.keys())
 
         lZparts = {l: None for l in langs}
+        # min_dim = min([transformer._get_output_dim() for transformer in self.embedders])
+        min_dim = 300
         for transformer in self.embedders:
             lZ = transformer.transform(lX)
+            nC = min([lZ[lang].shape[1] for lang in langs])
             for l in langs:
                 Z = lZ[l]
+                if Z.shape[1] > min_dim:
+                    print(f'Space Z matrix has more dimensions ({Z.shape[1]}) than the smallest representation {min_dim}.'
+                          f'Applying PCA(n_components={min_dim})')
+                    pca = PCA(n_components=min_dim)
+                    Z = pca.fit(Z).transform(Z)
                 if lZparts[l] is None:
                     lZparts[l] = Z
                 else:
                     lZparts[l] += Z
 
         n_transformers = len(self.embedders)
+        nC = min([lZparts[lang].shape[1] for lang in langs])
 
         return {l:lZparts[l] / n_transformers for l in langs}
 
@@ -266,7 +287,7 @@ class FeatureSet2Posteriors:
         self.transformer = transformer
         self.l2=l2
         self.n_jobs = n_jobs
-        self.prob_classifier = MetaClassifier(SVC(kernel='rbf', probability=True, cache_size=1000, random_state=1), n_jobs=n_jobs)
+        self.prob_classifier = MetaClassifier(SVC(kernel='rbf', gamma='auto', probability=True, cache_size=1000, random_state=1), n_jobs=n_jobs)
 
     def fit(self, lX, ly, lV=None):
         if lV is None and hasattr(self.transformer, 'lV'):
@@ -412,11 +433,13 @@ def word_class_embedding_matrix(X, Y, max_label_space=300):
     return WCE
 
 
-def XdotM(X,M):
+def XdotM(X,M, sif):
     # return X.dot(M)
-    # print(f'X={X.shape}, M={M.shape}')
+    print(f'X={X.shape}, M={M.shape}')
     E = X.dot(M)
-    E = remove_pc(E, npc=1)
+    if sif:
+        print("removing pc...")
+        E = remove_pc(E, npc=1)
     return E
 
 
