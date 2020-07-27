@@ -2,7 +2,7 @@
 import torch
 from time import time
 from util.file import create_if_not_exist
-
+import warnings
 
 class EarlyStopping:
 
@@ -19,9 +19,10 @@ class EarlyStopping:
         self.optimizer = optimizer
         self.STOP = False
 
-    def __call__(self, watch_score, epoch): #model
+    def __call__(self, watch_score, epoch):
 
-        if self.STOP: return #done
+        if self.STOP:
+            return
 
         if self.best_score is None or watch_score >= self.best_score:
             self.best_score = watch_score
@@ -29,10 +30,12 @@ class EarlyStopping:
             self.stop_time = time()
             if self.checkpoint:
                 self.print(f'[early-stop] improved, saving model in {self.checkpoint}')
-                torch.save(self.model, self.checkpoint)
-                # with open(self.checkpoint)
-                # torch.save({'state_dict': self.model.state_dict(),
-                #             'optimizer_state_dict': self.optimizer.state_dict()}, self.checkpoint)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    torch.save(self.model, self.checkpoint)
+                    # with open(self.checkpoint)
+                    # torch.save({'state_dict': self.model.state_dict(),
+                    #             'optimizer_state_dict': self.optimizer.state_dict()}, self.checkpoint)
             else:
                 self.print(f'[early-stop] improved')
             self.patience = self.patience_limit
