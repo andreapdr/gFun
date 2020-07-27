@@ -1,21 +1,3 @@
-"""
-Test with smaller subset of languages.
-
-1. Load doc (RCV1/2)
-2. Tokenize texts via bertTokenizer (I should already have these dumps)
-3. Construct better Dataloader/Datasets. NB: I need to keep track of the languages only for
-the testing phase (but who cares actually? If I have to do it for the testing phase, I think
-it is better to deploy it also in the training phase...)
-4. ...
-5. I have to understand if the pooled hidden state of the last layer is way worse than its averaged
-version (However, in BertForSeqClassification I guess that the pooled version is passed through
-the output linear layer in order to get the prediction scores?)
-6. At the same time, I have to build also an end-to-end model in order to fine-tune it. The previous step
-would be useful when deploying mBert as a View Generator. (Refactor gFun code with view generators?)
-7. ...
-8. Profits
-
-"""
 from dataset_builder import MultilingualDataset
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from torch.utils.data import Dataset, DataLoader
