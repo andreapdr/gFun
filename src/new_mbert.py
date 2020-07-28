@@ -14,6 +14,14 @@ from copy import deepcopy
 import argparse
 
 
+def check_sentences(sentences):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
+    for sentence in sentences:
+        converted = [tokenizer._convert_id_to_token(token) for token in sentence.numpy() if token != 0]
+        print(converted)
+    return
+
+
 def get_model(n_out):
     print('# Initializing model ...')
     model = BertForSequenceClassification.from_pretrained('bert-base-multilingual-cased', num_labels=n_out)
@@ -65,7 +73,7 @@ def get_dataset_name(datapath):
 
 def load_datasets(datapath):
     data = MultilingualDataset.load(datapath)
-    # data.set_view(languages=['nl', 'fr'])   # Testing with less langs
+    # data.set_view(languages=['it'], categories=[0, 1, 2, 3, 4])   # Testing with less langs
     data.show_dimensions()
 
     l_devel_raw, l_devel_target = data.training(target_as_csr=False)
@@ -93,12 +101,12 @@ class TrainingDataset(Dataset):
     data: dict of lang specific tokenized data
     labels: dict of lang specific targets
     """
+
     def __init__(self, data, labels):
         self.langs = data.keys()
-        self.lang_ids = {lang:identifier for identifier, lang in enumerate(self.langs)}
+        self.lang_ids = {lang: identifier for identifier, lang in enumerate(self.langs)}
 
         for i, lang in enumerate(self.langs):
-            # print(lang)
             _data = data[lang]['input_ids']
             _data = np.array(_data)
             _labels = labels[lang]
@@ -126,6 +134,12 @@ class TrainingDataset(Dataset):
     def get_lang_ids(self):
         return self.lang_ids
 
+    def get_nclasses(self):
+        if hasattr(self, 'labels'):
+            return len(self.labels[0])
+        else:
+            print('Method called before init!')
+
 
 def freeze_encoder(model):
     for param in model.base_model.parameters():
@@ -134,7 +148,7 @@ def freeze_encoder(model):
 
 
 def check_param_grad_status(model):
-    print('#'*50)
+    print('#' * 50)
     print('Model paramater status:')
     for name, child in model.named_children():
         trainable = False
@@ -145,10 +159,10 @@ def check_param_grad_status(model):
             print(f'{name} is frozen')
         else:
             print(f'{name} is not frozen')
-    print('#'*50)
+    print('#' * 50)
 
 
-def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, logfile):
+def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, logfile, val_step=False, val_dataloader=None, lang_ids=None):
     _dataset_path = opt.dataset.split('/')[-1].split('_')
     dataset_id = _dataset_path[0] + _dataset_path[-1]
 
@@ -156,18 +170,26 @@ def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, 
     model.train()
 
     for idx, (batch, target, lang_idx) in enumerate(train_dataloader):
-        # optim.zero_grad()
+        optim.zero_grad()
         out = model(batch.cuda())
-        loss = criterion(out[0], target.cuda())
+        logits = out[0]
+        loss = criterion(logits, target.cuda())
         loss.backward()
-        clip_gradient(model)
+        # clip_gradient(model)
         optim.step()
         loss_history.append(loss.item())
+
+        # Check tokenized sentences consistency
+        # check_sentences(batch.cpu())
 
         if idx % opt.log_interval == 0:
             interval_loss = np.mean(loss_history[-opt.log_interval:])
             print(
-                f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.6f}, Training Loss: {interval_loss:.6f}')
+                f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
+
+        # if val_step and idx % 100 == 0:
+        #     macrof1 = test(model, val_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va')
+        #     early_stop
 
     mean_loss = np.mean(interval_loss)
     logfile.add_row(epoch=epoch, measure='tr_loss', value=mean_loss, timelapse=time() - tinit)
@@ -179,7 +201,7 @@ def test(model, test_dataloader, lang_ids, tinit, epoch, logfile, criterion, mea
     loss_history = []
     model.eval()
     langs = lang_ids.keys()
-    id_2_lang = {v:k for k,v in lang_ids.items()}
+    id_2_lang = {v: k for k, v in lang_ids.items()}
     predictions = {l: [] for l in langs}
     yte_stacked = {l: [] for l in langs}
 
@@ -226,8 +248,10 @@ def get_tr_val_split(l_tokenized_tr, l_devel_target, val_prop, max_val, seed):
 
     for lang in l_tokenized_tr.keys():
         val_size = int(min(len(l_tokenized_tr[lang]['input_ids']) * val_prop, max_val))
-        l_split_tr[lang]['input_ids'], l_split_va[lang]['input_ids'], l_split_tr_target[lang], l_split_val_target[lang] = \
-            train_test_split(l_tokenized_tr[lang]['input_ids'], l_devel_target[lang], test_size=val_size, random_state=seed, shuffle=True)
+        l_split_tr[lang]['input_ids'], l_split_va[lang]['input_ids'], l_split_tr_target[lang], l_split_val_target[
+            lang] = \
+            train_test_split(l_tokenized_tr[lang]['input_ids'], l_devel_target[lang], test_size=val_size,
+                             random_state=seed, shuffle=True)
 
     return l_split_tr, l_split_tr_target, l_split_va, l_split_val_target
 
@@ -236,32 +260,34 @@ def main():
     print('Running main ...')
 
     DATAPATH = opt.dataset
+    MAX_LEN = 512
     method_name = set_method_name()
     logfile = init_logfile(method_name, opt)
 
     l_devel_raw, l_devel_target, l_test_raw, l_test_target = load_datasets(DATAPATH)
-    l_tokenized_tr = do_tokenization(l_devel_raw, max_len=512)
+    l_tokenized_tr = do_tokenization(l_devel_raw, max_len=MAX_LEN)
 
     l_split_tr, l_split_tr_target, l_split_va, l_split_val_target = get_tr_val_split(l_tokenized_tr, l_devel_target,
                                                                                      val_prop=0.2, max_val=2000,
                                                                                      seed=opt.seed)
 
-    l_tokenized_te = do_tokenization(l_test_raw, max_len=512)
+    l_tokenized_te = do_tokenization(l_test_raw, max_len=MAX_LEN)
 
     tr_dataset = TrainingDataset(l_split_tr, l_split_tr_target)
     va_dataset = TrainingDataset(l_split_va, l_split_val_target)
     te_dataset = TrainingDataset(l_tokenized_te, l_test_target)
 
     tr_dataloader = DataLoader(tr_dataset, batch_size=4, shuffle=True)
-    va_dataloader = DataLoader(va_dataset, batch_size=2, shuffle=False)
+    va_dataloader = DataLoader(va_dataset, batch_size=2, shuffle=True)
     te_dataloader = DataLoader(te_dataset, batch_size=2, shuffle=False)
 
     # Initializing model
-    model = get_model(73)
+    nC = tr_dataset.get_nclasses()
+    model = get_model(nC)
     model = model.cuda()
     criterion = torch.nn.BCEWithLogitsLoss().cuda()
     optim = init_optimizer(model, lr=opt.lr)
-    # lr_scheduler = StepLR(optim, step_size=25, gamma=0.5)
+    lr_scheduler = StepLR(optim, step_size=25, gamma=0.1)
     early_stop = EarlyStopping(model, optimizer=optim, patience=opt.patience,
                                checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_dataset_name(opt.dataset)}')
     # lr_scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(optim, num_warmup_steps= , num_training_steps=)
@@ -274,16 +300,17 @@ def main():
     # Training loop
     tinit = time()
     lang_ids = va_dataset.lang_ids
-    for epoch in range(1, opt.nepochs+1):
+    for epoch in range(1, opt.nepochs + 1):
         print('# Start Training ...')
         train(model, tr_dataloader, epoch, criterion, optim, method_name, tinit, logfile)
-        # lr_scheduler.step(epoch=None) # reduces the learning rate
+        lr_scheduler.step() # reduces the learning rate
 
         # Validation
         macrof1 = test(model, va_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va')
         early_stop(macrof1, epoch)
-        if opt.test_each>0:
-            if (opt.plotmode and (epoch==1 or epoch%opt.test_each==0)) or (not opt.plotmode and epoch%opt.test_each==0 and epoch<opt.nepochs):
+        if opt.test_each > 0:
+            if (opt.plotmode and (epoch == 1 or epoch % opt.test_each == 0)) or (
+                    not opt.plotmode and epoch % opt.test_each == 0 and epoch < opt.nepochs):
                 test(model, te_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'te')
 
         if early_stop.STOP:
@@ -297,10 +324,10 @@ def main():
 
         model = early_stop.restore_checkpoint()
 
-        if opt.val_epochs>0:
+        if opt.val_epochs > 0:
             print(f'running last {opt.val_epochs} training epochs on the validation set')
             for val_epoch in range(1, opt.val_epochs + 1):
-                train(model, va_dataloader, epoch+val_epoch, criterion, optim, method_name, tinit, logfile)
+                train(model, va_dataloader, epoch + val_epoch, criterion, optim, method_name, tinit, logfile)
 
         # final test
         print('Training complete: testing')
@@ -312,7 +339,8 @@ def main():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Neural text classification with Word-Class Embeddings - mBert model')
 
-    parser.add_argument('--dataset', type=str, default='/home/moreo/CLESA/rcv2/rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle',
+    parser.add_argument('--dataset', type=str,
+                        default='/home/moreo/CLESA/rcv2/rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle',
                         metavar='datasetpath', help=f'path to the pickled dataset')
     parser.add_argument('--nepochs', type=int, default=200, metavar='int',
                         help='number of epochs (default: 200)')
@@ -343,7 +371,7 @@ if __name__ == '__main__':
 
     # Testing different parameters ...
     opt.weight_decay = 0.01
-    opt.patience = 5
+    opt.lr = 1e-5
 
     main()
     # TODO: refactor .cuda() -> .to(device) in order to check if the process is faster on CPU given the bigger batch size
