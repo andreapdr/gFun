@@ -235,7 +235,7 @@ class MultilingualIndex:
     def bert_embeddings(self, bert_path, max_len=512, batch_size=64, stored_embeddings=False):
         show_gpu('GPU memory before initializing mBert model:')
         # TODO: load dumped embeddings?
-        from main_mbert_extractor import do_tokenization, ExtractorDataset, DataLoader
+        from experiment_scripts.main_mbert_extractor import do_tokenization, ExtractorDataset, DataLoader
         from transformers import BertConfig, BertForSequenceClassification
 
         print('[mBERT] generating mBERT doc embeddings')

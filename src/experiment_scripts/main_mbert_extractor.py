@@ -1,4 +1,4 @@
-from main_mbert import *
+from experiment_scripts.main_mbert import *
 import pickle
 
 

@@ -2,15 +2,12 @@ import os
 from dataset_builder import MultilingualDataset
 # from learning.learners import *
 # from learning.learners import FunnellingMultimodal
-from learning.transformers import Funnelling, PosteriorProbabilitiesEmbedder, MetaClassifier, \
-    TfidfVectorizerMultilingual, DocEmbedderList, WordClassEmbedder, MuseEmbedder, FeatureSet2Posteriors, Voting
+from learning.transformers import PosteriorProbabilitiesEmbedder, TfidfVectorizerMultilingual, WordClassEmbedder, MuseEmbedder, FeatureSet2Posteriors, Voting
 from util.evaluation import *
 from optparse import OptionParser
 from util.file import exists
 from util.results import PolylingualClassificationResults
 from sklearn.svm import SVC
-from util.util import get_learner, get_params
-from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 
 parser = OptionParser()
 

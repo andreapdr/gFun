@@ -1,6 +1,5 @@
 import os
 from dataset_builder import MultilingualDataset
-from learning.learners import *
 from util.evaluation import *
 from optparse import OptionParser
 from util.file import exists

@@ -1,6 +1,6 @@
 import argparse
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR, MultiStepLR
+from torch.optim.lr_scheduler import StepLR
 from dataset_builder import MultilingualDataset
 from learning.transformers import load_muse_embeddings
 from models.lstm_class import RNNMultilingualClassifier
