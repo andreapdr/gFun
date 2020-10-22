@@ -121,11 +121,10 @@ class MultilingualDataset:
             print("Lang {}, Xtr={}, ytr={}, Xte={}, yte={}".format(lang, shape(Xtr), self.cat_view(Ytr).shape, shape(Xte), self.cat_view(Yte).shape))
 
     def show_category_prevalences(self):
-        #pass
         nC = self.num_categories()
         accum_tr = np.zeros(nC, dtype=np.int)
         accum_te = np.zeros(nC, dtype=np.int)
-        in_langs = np.zeros(nC, dtype=np.int) #count languages with at least one positive example (per category)
+        in_langs = np.zeros(nC, dtype=np.int)   # count languages with at least one positive example (per category)
         for (lang, ((Xtr, Ytr, IDtr), (Xte, Yte, IDte))) in self.multiling_dataset.items():
             if lang not in self.langs(): continue
             prev_train = np.sum(self.cat_view(Ytr), axis=0)

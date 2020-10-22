@@ -8,7 +8,8 @@ from models.helpers import *
 class RNNMultilingualClassifier(nn.Module):
 
     def __init__(self, output_size, hidden_size, lvocab_size, learnable_length, lpretrained=None,
-                 drop_embedding_range=None, drop_embedding_prop=0, post_probabilities=True, only_post=False):
+                 drop_embedding_range=None, drop_embedding_prop=0, post_probabilities=True, only_post=False,
+                 bert_embeddings=False):
 
         super(RNNMultilingualClassifier, self).__init__()
         self.output_size = output_size
@@ -16,6 +17,7 @@ class RNNMultilingualClassifier(nn.Module):
         self.drop_embedding_range = drop_embedding_range
         self.drop_embedding_prop = drop_embedding_prop
         self.post_probabilities = post_probabilities
+        self.bert_embeddings = bert_embeddings
         assert 0 <= drop_embedding_prop <= 1, 'drop_embedding_prop: wrong range'
 
         self.lpretrained_embeddings = nn.ModuleDict()
@@ -56,19 +58,24 @@ class RNNMultilingualClassifier(nn.Module):
 
         if only_post:
             self.label = nn.Linear(output_size, output_size)
-        elif post_probabilities:
-            self.label = nn.Linear(ff2+output_size, output_size)
+        elif post_probabilities and not bert_embeddings:
+            self.label = nn.Linear(ff2 + output_size, output_size)
+        elif bert_embeddings and not post_probabilities:
+            self.label = nn.Linear(ff2 + 768, output_size)
+        elif post_probabilities and bert_embeddings:
+            self.label = nn.Linear(ff2 + output_size + 768, output_size)
         else:
             self.label = nn.Linear(ff2, output_size)
 
-
-    def forward(self, input, post, lang):
+    def forward(self, input, post, bert_embed, lang):
         if self.only_post:
             doc_embedding = post
         else:
             doc_embedding = self.transform(input, lang)
             if self.post_probabilities:
                 doc_embedding = torch.cat([doc_embedding, post], dim=1)
+            if self.bert_embeddings:
+                doc_embedding = torch.cat([doc_embedding, bert_embed], dim=1)
 
         logits = self.label(doc_embedding)
         return logits
@@ -83,7 +90,7 @@ class RNNMultilingualClassifier(nn.Module):
         # c_0 = Variable(torch.zeros(self.n_layers*self.n_directions, batch_size, self.hidden_size).cuda())
         # output, (_, _) = self.lstm(input, (h_0, c_0))
         output, _ = self.rnn(input, h_0)
-        output = output[-1,:,:]
+        output = output[-1, :, :]
         output = F.relu(self.linear0(output))
         output = self.dropout(F.relu(self.linear1(output)))
         output = self.dropout(F.relu(self.linear2(output)))
@@ -93,4 +100,15 @@ class RNNMultilingualClassifier(nn.Module):
         for l in self.langs:
             self.lpretrained_embeddings[l].requires_grad = True
             self.lpretrained_embeddings[l].weight.requires_grad = True
+
+    def get_embeddings(self, input, lang):
+        batch_size = input.shape[0]
+        input = embed(self, input, lang)
+        input = embedding_dropout(input, drop_range=self.drop_embedding_range, p_drop=self.drop_embedding_prop,
+                                  training=self.training)
+        input = input.permute(1, 0, 2)
+        h_0 = Variable(torch.zeros(self.n_layers * self.n_directions, batch_size, self.hidden_size).cuda())
+        output, _ = self.rnn(input, h_0)
+        output = output[-1, :, :]
+        return output.cpu().detach().numpy()
 

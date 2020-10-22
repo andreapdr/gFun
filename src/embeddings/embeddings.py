@@ -47,7 +47,6 @@ class FastTextWikiNews(Vectors):
 class FastTextMUSE(PretrainedEmbeddings):
     def __init__(self, path, lang, limit=None):
         super().__init__()
-        print(f'Loading fastText pretrained vectors for language {lang} from {path}')
         assert os.path.exists(path), print(f'pre-trained vectors not found in {path}')
         self.embed = FastTextWikiNews(path, lang, max_vectors=limit)
 

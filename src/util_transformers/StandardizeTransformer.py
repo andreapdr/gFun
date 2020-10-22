@@ -9,7 +9,7 @@ class StandardizeTransformer:
         self.range = range
 
     def fit(self, X):
-        print('fitting Standardizer')
+        print('fitting Standardizer...')
         std=np.std(X, axis=self.axis, ddof=1)
         self.std = np.clip(std, 1e-5, None)
         self.mean = np.mean(X, axis=self.axis)
@@ -21,7 +21,6 @@ class StandardizeTransformer:
             self.std = ones
             self.mean = zeros
         self.yetfit=True
-        print('done\n')
         return self
 
     def transform(self, X):

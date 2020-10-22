@@ -3,7 +3,7 @@ from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import torch
-from util.common import clip_gradient, predict
+from util.common import predict
 from time import time
 from util.csv_log import CSVLog
 from util.evaluation import evaluate
@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import StepLR
 from sklearn.model_selection import train_test_split
 from copy import deepcopy
 import argparse
+# from torch.utils.tensorboard import SummaryWriter
 
 
 def check_sentences(sentences):
@@ -69,11 +70,14 @@ def get_dataset_name(datapath):
     if id_split in possible_splits:
         dataset_name = splitted[0].split('/')[-1]
         return f'{dataset_name}_run{id_split}'
+    elif splitted[-2].split('.')[0] == 'full':
+        dataset_name = splitted[0].split('/')[-1]
+        return f'{dataset_name}_fullrun'
 
 
 def load_datasets(datapath):
     data = MultilingualDataset.load(datapath)
-    # data.set_view(languages=['it'], categories=[0, 1, 2, 3, 4])   # Testing with less langs
+    # data.set_view(languages=['it']) #, categories=[0, 1, 2, 3, 4])   # Testing with less langs
     data.show_dimensions()
 
     l_devel_raw, l_devel_target = data.training(target_as_csr=False)
@@ -82,8 +86,9 @@ def load_datasets(datapath):
     return l_devel_raw, l_devel_target, l_test_raw, l_test_target
 
 
-def do_tokenization(l_dataset, max_len=512):
-    print('# Starting Tokenization ...')
+def do_tokenization(l_dataset, max_len=512, verbose=True):
+    if verbose:
+        print('# Starting Tokenization ...')
     tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
     langs = l_dataset.keys()
     l_tokenized = {}
@@ -91,7 +96,6 @@ def do_tokenization(l_dataset, max_len=512):
         l_tokenized[lang] = tokenizer(l_dataset[lang],
                                       truncation=True,
                                       max_length=max_len,
-                                      # add_special_tokens=True,
                                       padding='max_length')
     return l_tokenized
 
@@ -162,7 +166,7 @@ def check_param_grad_status(model):
     print('#' * 50)
 
 
-def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, logfile, val_step=False, val_dataloader=None, lang_ids=None):
+def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, logfile, writer):
     _dataset_path = opt.dataset.split('/')[-1].split('_')
     dataset_id = _dataset_path[0] + _dataset_path[-1]
 
@@ -179,6 +183,10 @@ def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, 
         optim.step()
         loss_history.append(loss.item())
 
+        if writer is not None:
+            _n_step = (epoch - 1) * (len(train_dataloader)) + idx
+            writer.add_scalar('Loss_step/Train', loss, _n_step)
+
         # Check tokenized sentences consistency
         # check_sentences(batch.cpu())
 
@@ -187,16 +195,12 @@ def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, 
             print(
                 f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
 
-        # if val_step and idx % 100 == 0:
-        #     macrof1 = test(model, val_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va')
-        #     early_stop
-
     mean_loss = np.mean(interval_loss)
     logfile.add_row(epoch=epoch, measure='tr_loss', value=mean_loss, timelapse=time() - tinit)
     return mean_loss
 
 
-def test(model, test_dataloader, lang_ids, tinit, epoch, logfile, criterion, measure_prefix):
+def test(model, test_dataloader, lang_ids, tinit, epoch, logfile, criterion, measure_prefix, writer):
     print('# Validating model ...')
     loss_history = []
     model.eval()
@@ -229,6 +233,8 @@ def test(model, test_dataloader, lang_ids, tinit, epoch, logfile, criterion, mea
             print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f}')
     Mf1, mF1, MK, mk = np.mean(np.array(metrics), axis=0)
     print(f'[{measure_prefix}] Averages: MF1, mF1, MK, mK [{Mf1:.5f}, {mF1:.5f}, {MK:.5f}, {mk:.5f}]')
+    if writer is not None:
+        writer.add_scalars('Eval Metrics', {'Mf1': Mf1, 'mF1': mF1, 'MK': MK, 'mk':mk}, epoch)
 
     mean_loss = np.mean(loss_history)
     logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-F1', value=Mf1, timelapse=time() - tinit)
@@ -281,6 +287,7 @@ def main():
     va_dataloader = DataLoader(va_dataset, batch_size=2, shuffle=True)
     te_dataloader = DataLoader(te_dataset, batch_size=2, shuffle=False)
 
+
     # Initializing model
     nC = tr_dataset.get_nclasses()
     model = get_model(nC)
@@ -289,29 +296,31 @@ def main():
     optim = init_optimizer(model, lr=opt.lr)
     lr_scheduler = StepLR(optim, step_size=25, gamma=0.1)
     early_stop = EarlyStopping(model, optimizer=optim, patience=opt.patience,
-                               checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_dataset_name(opt.dataset)}')
-    # lr_scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(optim, num_warmup_steps= , num_training_steps=)
-    # print(model)
+                               checkpoint=f'/home/andreapdr/funneling_pdr/hug_checkpoint/{method_name}-{get_dataset_name(opt.dataset)}',
+                               is_bert=True)
 
     # Freezing encoder
     # model = freeze_encoder(model)
     check_param_grad_status(model)
+
+    # Tensorboard logger
+    # writer = SummaryWriter('../log/tensorboard_logs/')
 
     # Training loop
     tinit = time()
     lang_ids = va_dataset.lang_ids
     for epoch in range(1, opt.nepochs + 1):
         print('# Start Training ...')
-        train(model, tr_dataloader, epoch, criterion, optim, method_name, tinit, logfile)
+        train(model, tr_dataloader, epoch, criterion, optim, method_name, tinit, logfile, writer=None)
         lr_scheduler.step() # reduces the learning rate
 
         # Validation
-        macrof1 = test(model, va_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va')
+        macrof1 = test(model, va_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va', writer=None)
         early_stop(macrof1, epoch)
         if opt.test_each > 0:
             if (opt.plotmode and (epoch == 1 or epoch % opt.test_each == 0)) or (
                     not opt.plotmode and epoch % opt.test_each == 0 and epoch < opt.nepochs):
-                test(model, te_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'te')
+                test(model, te_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'te', writer=None)
 
         if early_stop.STOP:
             print('[early-stop] STOP')
@@ -323,16 +332,19 @@ def main():
         print('Training over. Performing final evaluation')
 
         model = early_stop.restore_checkpoint()
+        model = model.cuda()
 
         if opt.val_epochs > 0:
             print(f'running last {opt.val_epochs} training epochs on the validation set')
             for val_epoch in range(1, opt.val_epochs + 1):
-                train(model, va_dataloader, epoch + val_epoch, criterion, optim, method_name, tinit, logfile)
+                train(model, va_dataloader, epoch + val_epoch, criterion, optim, method_name, tinit, logfile, writer=None)
 
         # final test
         print('Training complete: testing')
-        test(model, te_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'te')
+        test(model, te_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'te', writer=None)
 
+    # writer.flush()
+    # writer.close()
     exit('Code Executed!')
 
 
@@ -372,6 +384,7 @@ if __name__ == '__main__':
     # Testing different parameters ...
     opt.weight_decay = 0.01
     opt.lr = 1e-5
+    opt.patience = 5
 
     main()
     # TODO: refactor .cuda() -> .to(device) in order to check if the process is faster on CPU given the bigger batch size

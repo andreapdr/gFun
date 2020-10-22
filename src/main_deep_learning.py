@@ -12,6 +12,7 @@ from time import time
 from tqdm import tqdm
 from util.evaluation import evaluate
 from util.file import get_file_name
+# import pickle
 
 allowed_nets = {'rnn'}
 
@@ -34,7 +35,8 @@ def init_Net(nC, multilingual_index, xavier_uniform=True):
             drop_embedding_range=multilingual_index.sup_range,
             drop_embedding_prop=opt.sup_drop,
             post_probabilities=opt.posteriors,
-            only_post=only_post
+            only_post=only_post,
+            bert_embeddings=opt.mbert
         )
 
     # weight initialization
@@ -59,8 +61,10 @@ def set_method_name():
         method_name += f'-WCE'
     if opt.posteriors:
         method_name += f'-Posteriors'
+    if opt.mbert:
+        method_name += f'-mBert'
     if (opt.pretrained or opt.supervised) and opt.tunable:
-        method_name+='-(trainable)'
+        method_name += '-(trainable)'
     else:
         method_name += '-(static)'
     if opt.learnable > 0:
@@ -77,7 +81,8 @@ def init_logfile(method_name, opt):
     logfile.set_default('dataset', opt.dataset)
     logfile.set_default('run', opt.seed)
     logfile.set_default('method', method_name)
-    assert opt.force or not logfile.already_calculated(), f'results for dataset {opt.dataset} method {method_name} and run {opt.seed} already calculated'
+    assert opt.force or not logfile.already_calculated(), f'results for dataset {opt.dataset} method {method_name} ' \
+                                                          f'and run {opt.seed} already calculated'
     return logfile
 
 
@@ -90,15 +95,83 @@ def load_pretrained_embeddings(we_path, langs):
     return lpretrained, lpretrained_vocabulary
 
 
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+
+
+def train(model, batcher, ltrain_index, ltrain_posteriors, ltrain_bert, lytr, tinit, logfile, criterion, optim, epoch, method_name):
+    _dataset_path = opt.dataset.split('/')[-1].split('_')
+    dataset_id = _dataset_path[0] + _dataset_path[-1]
+
+    loss_history = []
+    model.train()
+    for idx, (batch, post, bert_emb, target, lang) in enumerate(batcher.batchify(ltrain_index, ltrain_posteriors, ltrain_bert, lytr)):
+        optim.zero_grad()
+        # _out = model(batch, post, bert_emb, lang)
+        loss = criterion(model(batch, post, bert_emb, lang), target)
+        loss.backward()
+        clip_gradient(model)
+        optim.step()
+        loss_history.append(loss.item())
+
+        if idx % opt.log_interval == 0:
+            interval_loss = np.mean(loss_history[-opt.log_interval:])
+            print(f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
+
+    mean_loss = np.mean(interval_loss)
+    logfile.add_row(epoch=epoch, measure='tr_loss', value=mean_loss, timelapse=time() - tinit)
+    return mean_loss
+
+
+def test(model, batcher, ltest_index, ltest_posteriors, lte_bert, lyte, tinit, epoch, logfile, criterion, measure_prefix):
+
+    loss_history = []
+    model.eval()
+    langs = sorted(ltest_index.keys())
+    predictions = {l:[] for l in langs}
+    yte_stacked = {l:[] for l in langs}
+    batcher.init_offset()
+    for batch, post, bert_emb, target, lang in tqdm(batcher.batchify(ltest_index, ltest_posteriors, lte_bert, lyte), desc='evaluation: '):
+        logits = model(batch, post, bert_emb, lang)
+        loss = criterion(logits, target).item()
+        prediction = predict(logits)
+        predictions[lang].append(prediction)
+        yte_stacked[lang].append(target.detach().cpu().numpy())
+        loss_history.append(loss)
+
+    ly  = {l:np.vstack(yte_stacked[l]) for l in langs}
+    ly_ = {l:np.vstack(predictions[l]) for l in langs}
+    l_eval = evaluate(ly, ly_)
+    metrics = []
+    for lang in langs:
+        macrof1, microf1, macrok, microk = l_eval[lang]
+        metrics.append([macrof1, microf1, macrok, microk])
+        if measure_prefix == 'te':
+            print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f}')
+    Mf1, mF1, MK, mk = np.mean(np.array(metrics), axis=0)
+    print(f'[{measure_prefix}] Averages: MF1, mF1, MK, mK [{Mf1:.5f}, {mF1:.5f}, {MK:.5f}, {mk:.5f}]')
+
+    mean_loss = np.mean(loss_history)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-F1', value=Mf1, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-F1', value=mF1, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-K', value=MK, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-K', value=mk, timelapse=time() - tinit)
+    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-loss', value=mean_loss, timelapse=time() - tinit)
+
+    return Mf1
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 def main():
+    DEBUGGING = False
 
     method_name = set_method_name()
     logfile = init_logfile(method_name, opt)
 
     # Loading the dataset
     data = MultilingualDataset.load(opt.dataset)
-    data.set_view(languages=['de', 'fr']) #, 'it', 'en']) # 'sv', 'da', 'es', 'it'])
+    # data.set_view(languages=['it', 'fr'])  # Testing with less langs
     data.show_dimensions()
     langs = data.langs()
     l_devel_raw, l_devel_target = data.training(target_as_csr=True)
@@ -114,25 +187,36 @@ def main():
     multilingual_index.train_val_split(val_prop=0.2, max_val=2000, seed=opt.seed)
     multilingual_index.embedding_matrices(lpretrained, opt.supervised)
     if opt.posteriors:
-        lPtr, lPva, lPte = multilingual_index.posterior_probabilities(max_training_docs_by_lang=5000, store_posteriors=True) #stored_post=True) #opt.svm_max_docs)
+        if DEBUGGING:
+            import pickle
+            with open('/home/andreapdr/funneling_pdr/dumps/posteriors_jrc_run0.pickle', 'rb') as infile:
+                data_post = pickle.load(infile)
+                lPtr = data_post[0]
+                lPva = data_post[1]
+                lPte = data_post[2]
+                print('## DEBUGGING MODE: loaded dumped posteriors for jrc run0')
+        else:
+            lPtr, lPva, lPte = multilingual_index.posterior_probabilities(max_training_docs_by_lang=5000)
     else:
         lPtr, lPva, lPte = None, None, None
 
-    # just_test = False
-    # if just_test:
-    #
-    #     model = torch.load(
-    #         '../checkpoint/rnn(H512)-Muse-WCE-Posteriors-(trainable)-jrc_doclist_1958-2005vs2006_all_top300_full_processed.pickle')
-    #     criterion = torch.nn.BCEWithLogitsLoss().cuda()
-    #
-    #     # batcher_train = Batch(opt.batch_size, batches_per_epoch=10, languages=langs, lpad=multilingual_index.l_pad())
-    #
-    #     batcher_eval = Batch(opt.batch_size, batches_per_epoch=-1, languages=langs, lpad=multilingual_index.l_pad())
-    #     l_test_index = multilingual_index.l_test_index()
-    #     epoch = 1
-    #     tinit = time()
-    #     test(model, batcher_eval, l_test_index, lPte, l_test_target, tinit, epoch, logfile, criterion, 'te')
-    #     exit('Loaded')
+    if opt.mbert:
+        _dataset_path = opt.dataset.split('/')[-1].split('_')
+        _model_folder = _dataset_path[0] + '_' + _dataset_path[-1].replace('.pickle', '')
+        # print(f'Model Folder: {_model_folder}')
+
+        if DEBUGGING:
+            with open('/home/andreapdr/funneling_pdr/dumps/mBert_jrc_run0.pickle', 'rb') as infile:
+                data_embed = pickle.load(infile)
+                tr_bert_embeddings = data_embed[0]
+                va_bert_embeddings = data_embed[1]
+                te_bert_embeddings = data_embed[2]
+                print('## DEBUGGING MODE: loaded dumped mBert embeddings for jrc run0')
+        else:
+            tr_bert_embeddings, va_bert_embeddings, te_bert_embeddings \
+                = multilingual_index.bert_embeddings(f'/home/andreapdr/funneling_pdr/hug_checkpoint/mBERT-{_model_folder}/')
+    else:
+        tr_bert_embeddings, va_bert_embeddings, te_bert_embeddings = None, None, None
 
     # Model initialization
     model = init_Net(data.num_categories(), multilingual_index)
@@ -141,11 +225,12 @@ def main():
     criterion = torch.nn.BCEWithLogitsLoss().cuda()
     lr_scheduler = StepLR(optim, step_size=25, gamma=0.5)
     batcher_train = Batch(opt.batch_size, batches_per_epoch=10, languages=langs, lpad=multilingual_index.l_pad())
-    batcher_eval  = Batch(opt.batch_size, batches_per_epoch=-1, languages=langs, lpad=multilingual_index.l_pad())
+    batcher_eval = Batch(opt.batch_size, batches_per_epoch=-1, languages=langs, lpad=multilingual_index.l_pad())
 
     tinit = time()
     create_if_not_exist(opt.checkpoint_dir)
-    early_stop = EarlyStopping(model, optimizer=optim, patience=opt.patience, checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_file_name(opt.dataset)}')
+    early_stop = EarlyStopping(model, optimizer=optim, patience=opt.patience,
+                               checkpoint=f'{opt.checkpoint_dir}/{method_name}-{get_file_name(opt.dataset)}')
 
     l_train_index, l_train_target = multilingual_index.l_train()
     l_val_index, l_val_target = multilingual_index.l_val()
@@ -154,11 +239,11 @@ def main():
     print('-'*80)
     print('Start training')
     for epoch in range(1, opt.nepochs + 1):
-        train(model, batcher_train, l_train_index, lPtr, l_train_target, tinit, logfile, criterion, optim, epoch, method_name)
+        train(model, batcher_train, l_train_index, lPtr, tr_bert_embeddings, l_train_target, tinit, logfile, criterion, optim, epoch, method_name)
         lr_scheduler.step() # reduces the learning rate
 
         # validation
-        macrof1 = test(model, batcher_eval, l_val_index, lPva, l_val_target, tinit, epoch, logfile, criterion, 'va')
+        macrof1 = test(model, batcher_eval, l_val_index, lPva, va_bert_embeddings, l_val_target, tinit, epoch, logfile, criterion, 'va')
         early_stop(macrof1, epoch)
         if opt.test_each>0:
             if (opt.plotmode and (epoch==1 or epoch%opt.test_each==0)) or (not opt.plotmode and epoch%opt.test_each==0 and epoch<opt.nepochs):
@@ -186,78 +271,11 @@ def main():
             print(f'running last {opt.val_epochs} training epochs on the validation set')
             for val_epoch in range(1, opt.val_epochs + 1):
                 batcher_train.init_offset()
-                train(model, batcher_train, l_val_index, lPva, l_val_target, tinit, logfile, criterion, optim, epoch+val_epoch, method_name)
+                train(model, batcher_train, l_val_index, lPva, va_bert_embeddings, l_val_target, tinit, logfile, criterion, optim, epoch+val_epoch, method_name)
 
         # final test
         print('Training complete: testing')
-        test(model, batcher_eval, l_test_index, lPte, l_test_target, tinit, epoch, logfile, criterion, 'te')
-
-
-def get_lr(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
-
-
-def train(model, batcher, ltrain_index, ltrain_posteriors, lytr, tinit, logfile, criterion, optim, epoch, method_name):
-    _dataset_path = opt.dataset.split('/')[-1].split('_')
-    dataset_id = _dataset_path[0] + _dataset_path[-1]
-
-    loss_history = []
-    model.train()
-    for idx, (batch, post, target, lang) in enumerate(batcher.batchify(ltrain_index, ltrain_posteriors, lytr)):
-        optim.zero_grad()
-        _out = model(batch,post, lang)
-        loss = criterion(model(batch, post, lang), target)
-        loss.backward()
-        clip_gradient(model)
-        optim.step()
-        loss_history.append(loss.item())
-
-        if idx % opt.log_interval == 0:
-            interval_loss = np.mean(loss_history[-opt.log_interval:])
-            print(f'{dataset_id} {method_name} Epoch: {epoch}, Step: {idx}, lr={get_lr(optim):.5f}, Training Loss: {interval_loss:.6f}')
-
-    mean_loss = np.mean(interval_loss)
-    logfile.add_row(epoch=epoch, measure='tr_loss', value=mean_loss, timelapse=time() - tinit)
-    return mean_loss
-
-
-def test(model, batcher, ltest_index, ltest_posteriors, lyte, tinit, epoch, logfile, criterion, measure_prefix):
-
-    loss_history = []
-    model.eval()
-    langs = sorted(ltest_index.keys())
-    predictions = {l:[] for l in langs}
-    yte_stacked = {l:[] for l in langs}
-    batcher.init_offset()
-    for batch, post, target, lang in tqdm(batcher.batchify(ltest_index, ltest_posteriors, lyte), desc='evaluation: '):
-        logits = model(batch, post, lang)
-        loss = criterion(logits, target).item()
-        prediction = predict(logits)
-        predictions[lang].append(prediction)
-        yte_stacked[lang].append(target.detach().cpu().numpy())
-        loss_history.append(loss)
-
-    ly  = {l:np.vstack(yte_stacked[l]) for l in langs}
-    ly_ = {l:np.vstack(predictions[l]) for l in langs}
-    l_eval = evaluate(ly, ly_)
-    metrics = []
-    for lang in langs:
-        macrof1, microf1, macrok, microk = l_eval[lang]
-        metrics.append([macrof1, microf1, macrok, microk])
-        if measure_prefix=='te':
-            print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f}')
-    Mf1, mF1, MK, mk = np.mean(np.array(metrics), axis=0)
-    print(f'[{measure_prefix}] Averages: MF1, mF1, MK, mK [{Mf1:.5f}, {mF1:.5f}, {MK:.5f}, {mk:.5f}]')
-
-    mean_loss = np.mean(loss_history)
-    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-F1', value=Mf1, timelapse=time() - tinit)
-    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-F1', value=mF1, timelapse=time() - tinit)
-    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-macro-K', value=MK, timelapse=time() - tinit)
-    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-micro-K', value=mk, timelapse=time() - tinit)
-    logfile.add_row(epoch=epoch, measure=f'{measure_prefix}-loss', value=mean_loss, timelapse=time() - tinit)
-
-    return Mf1
+        test(model, batcher_eval, l_test_index, lPte, te_bert_embeddings, l_test_target, tinit, epoch, logfile, criterion, 'te')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -281,8 +299,6 @@ if __name__ == '__main__':
                               'language used to train the calibrated SVMs (only used if --posteriors is active)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='int', help='how many batches to wait before printing training status')
     parser.add_argument('--log-file', type=str, default='../log/log.csv', metavar='str', help='path to the log csv file')
-    # parser.add_argument('--pickle-dir', type=str, default='../pickles', metavar='str', help=f'if set, specifies the path where to '
-    #                     f'save/load the dataset pickled (set to None if you prefer not to retain the pickle file)')
     parser.add_argument('--test-each', type=int, default=0, metavar='int', help='how many epochs to wait before invoking test (default: 0, only at the end)')
     parser.add_argument('--checkpoint-dir', type=str, default='../checkpoint', metavar='str', help='path to the directory containing checkpoints')
     parser.add_argument('--net', type=str, default='rnn', metavar='str', help=f'net, one in {allowed_nets}')
@@ -299,7 +315,9 @@ if __name__ == '__main__':
                         '(default 300)')
     parser.add_argument('--force', action='store_true', default=False, help='do not check if this experiment has already been run')
     parser.add_argument('--tunable', action='store_true', default=False,
-                        help='pretrained embeddings are tunable from the begining (default False, i.e., static)')
+                        help='pretrained embeddings are tunable from the beginning (default False, i.e., static)')
+    parser.add_argument('--mbert', action='store_true', default=False,
+                        help='use mBert embeddings')
 
     opt = parser.parse_args()
 

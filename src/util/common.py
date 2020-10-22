@@ -1,15 +1,14 @@
+import subprocess
 import warnings
-import time
-from sklearn.svm import SVC
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from embeddings.supervised import get_supervised_embeddings
-from learning.transformers import PosteriorProbabilitiesEmbedder, TfidfVectorizerMultilingual
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+# from learning.transformers import PosteriorProbabilitiesEmbedder, TfidfVectorizerMultilingual
 import numpy as np
 from tqdm import tqdm
 import torch
-from scipy.sparse import vstack, issparse
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
@@ -161,12 +160,13 @@ class Index:
 def none_dict(langs):
     return {l:None for l in langs}
 
+
 class MultilingualIndex:
     def __init__(self): #, add_language_trace=False):
         self.l_index = {}
         self.l_vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
         # self.l_vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True, max_features=25000)
-        # self.add_language_trace=add_language_trace
+        # self.add_language_trace=add_language_trace}
 
     def index(self, l_devel_raw, l_devel_target, l_test_raw, l_pretrained_vocabulary):
         self.langs = sorted(l_devel_raw.keys())
@@ -184,6 +184,8 @@ class MultilingualIndex:
         for l,index in self.l_index.items():
             index.train_val_split(val_prop, max_val, seed=seed)
 
+
+
     def embedding_matrices(self, lpretrained, supervised):
         lXtr = self.get_lXtr() if supervised else none_dict(self.langs)
         lYtr = self.l_train_target() if supervised else none_dict(self.langs)
@@ -191,52 +193,133 @@ class MultilingualIndex:
             index.compose_embedding_matrix(lpretrained[l], supervised, lXtr[l], lYtr[l])
             self.sup_range = index.wce_range
 
-            # experimental... does it make sense to keep track of the language? i.e., to inform the network from which
-            # language does the data came from...
-            # if self.add_language_trace and pretrained_embeddings is not None:
-            #     print('adding language trace')
-            #     lang_trace = torch.zeros(size=(vocabsize, len(self.langs)))
-            #     lang_trace[:,i]=1
-            #     pretrained_embeddings = torch.cat([pretrained_embeddings, lang_trace], dim=1)
+    # TODO circular import with transformers --> when generating posterior prob, we import PosteriorProbabilitiesEmbedder which is defined in transformers
+    # def posterior_probabilities(self, max_training_docs_by_lang=5000, store_posteriors=False, stored_post=False):
+    #     # choose a maximum of "max_training_docs_by_lang" for training the calibrated SVMs
+    #     timeit = time.time()
+    #     lXtr = {l:Xtr for l,Xtr in self.get_lXtr().items()}
+    #     lYtr = {l:Ytr for l,Ytr in self.l_train_target().items()}
+    #     if not stored_post:
+    #         for l in self.langs:
+    #             n_elements = lXtr[l].shape[0]
+    #             if n_elements > max_training_docs_by_lang:
+    #                 choice = np.random.permutation(n_elements)[:max_training_docs_by_lang]
+    #                 lXtr[l] = lXtr[l][choice]
+    #                 lYtr[l] = lYtr[l][choice]
+    #
+    #         # train the posterior probabilities embedder
+    #         print('[posteriors] training a calibrated SVM')
+    #         learner = SVC(kernel='linear', probability=True, cache_size=1000, C=1, random_state=1, gamma='auto')
+    #         prob_embedder = PosteriorProbabilitiesEmbedder(learner, l2=False)
+    #         prob_embedder.fit(lXtr, lYtr)
+    #
+    #         # transforms the training, validation, and test sets into posterior probabilities
+    #         print('[posteriors] generating posterior probabilities')
+    #         lPtr = prob_embedder.transform(self.get_lXtr())
+    #         lPva = prob_embedder.transform(self.get_lXva())
+    #         lPte = prob_embedder.transform(self.get_lXte())
+    #     # NB: Check splits indices !
+    #         if store_posteriors:
+    #             import pickle
+    #             with open('../dumps/posteriors_fulljrc.pkl', 'wb') as outfile:
+    #                 pickle.dump([lPtr, lPva, lPte], outfile)
+    #                 print(f'Successfully dumped posteriors!')
+    #     else:
+    #         import pickle
+    #         with open('../dumps/posteriors_fulljrc.pkl', 'rb') as infile:
+    #             lPtr, lPva, lPte = pickle.load(infile)
+    #             print(f'Successfully loaded stored posteriors!')
+    #     print(f'[posteriors] done in {time.time() - timeit}')
+    #     return lPtr, lPva, lPte
+
+    def bert_embeddings(self, bert_path, max_len=512, batch_size=64, stored_embeddings=False):
+        show_gpu('GPU memory before initializing mBert model:')
+        # TODO: load dumped embeddings?
+        from main_mbert_extractor import do_tokenization, ExtractorDataset, DataLoader
+        from transformers import BertConfig, BertForSequenceClassification
+
+        print('[mBERT] generating mBERT doc embeddings')
+        lXtr_raw = self.get_raw_lXtr()
+        lXva_raw = self.get_raw_lXva()
+        lXte_raw = self.get_raw_lXte()
+
+        print('# Tokenizing datasets')
+        l_tokenized_tr = do_tokenization(lXtr_raw, max_len=max_len, verbose=False)
+        tr_dataset = ExtractorDataset(l_tokenized_tr)
+        tr_lang_ids = tr_dataset.lang_ids
+        tr_dataloader = DataLoader(tr_dataset, batch_size=batch_size, shuffle=False)
+
+        l_tokenized_va = do_tokenization(lXva_raw, max_len=max_len, verbose=False)
+        va_dataset = ExtractorDataset(l_tokenized_va)
+        va_lang_ids = va_dataset.lang_ids
+        va_dataloader = DataLoader(va_dataset, batch_size=batch_size, shuffle=False)
+
+        l_tokenized_te = do_tokenization(lXte_raw, max_len=max_len, verbose=False)
+        te_dataset = ExtractorDataset(l_tokenized_te)
+        te_lang_ids = te_dataset.lang_ids
+        te_dataloader = DataLoader(te_dataset, batch_size=batch_size, shuffle=False)
+
+        num_labels = self.l_index[self.langs[0]].val_target.shape[1]
+        config = BertConfig.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True,
+                                            num_labels=num_labels)
+        model = BertForSequenceClassification.from_pretrained(bert_path,
+                                                              config=config).cuda()
+        print('# Extracting document embeddings')
+        tr_bert_embeddings, id2lang_tr = self.do_bert_embeddings(model, tr_dataloader, tr_lang_ids, verbose=False)
+        va_bert_embeddings, id2lang_va = self.do_bert_embeddings(model, va_dataloader, va_lang_ids, verbose=False)
+        te_bert_embeddings, id2lang_te = self.do_bert_embeddings(model, te_dataloader, te_lang_ids, verbose=False)
+
+        show_gpu('GPU memory before after mBert model:')
+        # Freeing GPU's memory
+        import gc
+        del model, tr_dataloader, va_dataloader, te_dataloader
+        gc.collect()
+        torch.cuda.empty_cache()
+        show_gpu('GPU memory after clearing cache:')
+        return tr_bert_embeddings, va_bert_embeddings, te_bert_embeddings
 
 
-    def posterior_probabilities(self, max_training_docs_by_lang=5000, store_posteriors=False, stored_post=False):
-        # choose a maximum of "max_training_docs_by_lang" for training the calibrated SVMs
-        timeit = time.time()
-        lXtr = {l:Xtr for l,Xtr in self.get_lXtr().items()}
-        lYtr = {l:Ytr for l,Ytr in self.l_train_target().items()}
-        if not stored_post:
-            for l in self.langs:
-                n_elements = lXtr[l].shape[0]
-                if n_elements > max_training_docs_by_lang:
-                    choice = np.random.permutation(n_elements)[:max_training_docs_by_lang]
-                    lXtr[l] = lXtr[l][choice]
-                    lYtr[l] = lYtr[l][choice]
+    @staticmethod
+    def do_bert_embeddings(model, data, lang_ids, verbose=True):
+        if verbose:
+            print('# Feature Extractor Mode...')
+        all_batch_embeddings = {}
+        id2lang = {v: k for k, v in lang_ids.items()}
+        with torch.no_grad():
+            for batch, lang_idx in data:
+                out = model(batch.cuda())
+                last_hidden_state = out[1][-1]
+                batch_embeddings = last_hidden_state[:, 0, :]
+                for i, l_idx in enumerate(lang_idx.numpy()):
+                    if id2lang[l_idx] not in all_batch_embeddings.keys():
+                        all_batch_embeddings[id2lang[l_idx]] = batch_embeddings[i].detach().cpu().numpy()
+                    else:
+                        all_batch_embeddings[id2lang[l_idx]] = np.vstack((all_batch_embeddings[id2lang[l_idx]],
+                                                                          batch_embeddings[i].detach().cpu().numpy()))
 
-            # train the posterior probabilities embedder
-            print('[posteriors] training a calibrated SVM')
-            learner = SVC(kernel='linear', probability=True, cache_size=1000, C=1, random_state=1, gamma='auto')
-            prob_embedder = PosteriorProbabilitiesEmbedder(learner, l2=False)
-            prob_embedder.fit(lXtr, lYtr)
+        return all_batch_embeddings, id2lang
 
-            # transforms the training, validation, and test sets into posterior probabilities
-            print('[posteriors] generating posterior probabilities')
-            lPtr = prob_embedder.transform(self.get_lXtr())
-            lPva = prob_embedder.transform(self.get_lXva())
-            lPte = prob_embedder.transform(self.get_lXte())
-        # NB: Check splits indices !
-            if store_posteriors:
-                import pickle
-                with open('../dumps/posteriors_fulljrc.pkl', 'wb') as outfile:
-                    pickle.dump([lPtr, lPva, lPte], outfile)
-                    print(f'Successfully dumped posteriors!')
-        else:
-            import pickle
-            with open('../dumps/posteriors_fulljrc.pkl', 'rb') as infile:
-                lPtr, lPva, lPte = pickle.load(infile)
-                print(f'Successfully loaded stored posteriors!')
-        print(f'[posteriors] done in {time.time() - timeit}')
-        return lPtr, lPva, lPte
+    def get_raw_lXtr(self):
+        lXtr_raw = {k:[] for k in self.langs}
+        lYtr_raw = {k: [] for k in self.langs}
+        for lang in self.langs:
+            lXtr_raw[lang] = self.l_index[lang].train_raw
+            lYtr_raw[lang] = self.l_index[lang].train_raw
+        return lXtr_raw
+
+    def get_raw_lXva(self):
+        lXva_raw = {k: [] for k in self.langs}
+        for lang in self.langs:
+            lXva_raw[lang] = self.l_index[lang].val_raw
+
+        return lXva_raw
+
+    def get_raw_lXte(self):
+        lXte_raw = {k: [] for k in self.langs}
+        for lang in self.langs:
+            lXte_raw[lang] = self.l_index[lang].test_raw
+
+        return lXte_raw
 
     def get_lXtr(self):
         if not hasattr(self, 'lXtr'):
@@ -277,12 +360,17 @@ class MultilingualIndex:
     def l_test_index(self):
         return {l: index.test_index for l, index in self.l_index.items()}
 
+    def l_devel_index(self):
+        return {l: index.devel_index for l, index in self.l_index.items()}
+
+    def l_devel_target(self):
+        return {l: index.devel_target for l, index in self.l_index.items()}
+
     def l_train(self):
         return self.l_train_index(), self.l_train_target()
 
     def l_val(self):
         return self.l_val_index(), self.l_val_target()
-
 
 
 class Batch:
@@ -297,7 +385,7 @@ class Batch:
     def init_offset(self):
         self.offset = {lang: 0 for lang in self.languages}
 
-    def batchify(self, l_index, l_post, llabels):
+    def batchify(self, l_index, l_post, l_bert, llabels):   # TODO: add bert embedding here...
         langs = self.languages
         l_num_samples = {l:len(l_index[l]) for l in langs}
 
@@ -322,6 +410,10 @@ class Batch:
                 if l_post is not None:
                     post = torch.FloatTensor(l_post[lang][batch_slice]).cuda()
 
+                bert_emb = None
+                if l_bert is not None:
+                    bert_emb = torch.FloatTensor(l_bert[lang][batch_slice]).cuda()
+
                 batch = pad(batch, pad_index=self.lpad[lang], max_pad_length=self.max_pad_length)
 
                 batch = torch.LongTensor(batch).cuda()
@@ -329,7 +421,7 @@ class Batch:
 
                 self.offset[lang] = limit
 
-                yield batch, post, target, lang
+                yield batch, post, bert_emb, target, lang
 
 
 def batchify(l_index, l_post, llabels, batchsize, lpad, max_pad_length=500):
@@ -384,7 +476,81 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def show_gpu(msg):
+    """
+    ref: https://discuss.pytorch.org/t/access-gpu-memory-usage-in-pytorch/3192/4
+    """
+
+    def query(field):
+        return (subprocess.check_output(
+            ['nvidia-smi', f'--query-gpu={field}',
+             '--format=csv,nounits,noheader'],
+            encoding='utf-8'))
+
+    def to_int(result):
+        return int(result.strip().split('\n')[0])
+
+    used = to_int(query('memory.used'))
+    total = to_int(query('memory.total'))
+    pct = used / total
+    print('\n' + msg, f'{100 * pct:2.1f}% ({used} out of {total})')
 
 
+class TfidfVectorizerMultilingual:
 
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    def fit(self, lX, ly=None):
+        self.langs = sorted(lX.keys())
+        self.vectorizer = {l: TfidfVectorizer(**self.kwargs).fit(lX[l]) for l in self.langs}
+        return self
+
+    def transform(self, lX):
+        return {l: self.vectorizer[l].transform(lX[l]) for l in self.langs}
+
+    def fit_transform(self, lX, ly=None):
+        return self.fit(lX, ly).transform(lX)
+
+    def vocabulary(self, l=None):
+        if l is None:
+            return {l: self.vectorizer[l].vocabulary_ for l in self.langs}
+        else:
+            return self.vectorizer[l].vocabulary_
+
+    def get_analyzer(self, l=None):
+        if l is None:
+            return {l: self.vectorizer[l].build_analyzer() for l in self.langs}
+        else:
+            return self.vectorizer[l].build_analyzer()
+
+
+def get_learner(calibrate=False, kernel='linear', C=1):
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=C, random_state=1, gamma='auto', verbose=False)
+
+
+def get_params(optimc=False):
+    if not optimc:
+        return None
+    c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
+    kernel = 'rbf'
+    return [{'kernel': [kernel], 'C': c_range, 'gamma':['auto']}]
+
+
+def get_method_name(dataset, posteriors, supervised, pretrained, mbert, gru,
+                    gruMUSE, gruWCE, agg, allprob):
+    _id = '-'
+    _id_conf = [posteriors, supervised, pretrained, mbert, gru]
+    _id_name = ['X', 'W', 'M', 'B', 'G']
+    for i, conf in enumerate(_id_conf):
+        if conf:
+            _id += _id_name[i]
+    _id = _id if not gruMUSE else _id + '_muse'
+    _id = _id if not gruWCE else _id + '_wce'
+    _id = _id if not agg else _id + '_mean'
+    _id = _id if not allprob else _id + '_allprob'
+
+    _dataset_path = dataset.split('/')[-1].split('_')
+    dataset_id = _dataset_path[0] + _dataset_path[-1]
+    return _id, dataset_id
 

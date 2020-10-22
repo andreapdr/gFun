@@ -133,7 +133,8 @@ class MonolingualClassifier:
             self.model = OneVsRestClassifier(self.learner, n_jobs=self.n_jobs)
         else:
             self.model = self.learner
-            raise NotImplementedError('not working as a base-classifier for funneling if there are gaps in the labels across languages')
+            raise NotImplementedError('not working as a base-classifier for funneling if there are gaps in '
+                                      'the labels across languages')
 
         # parameter optimization?
         if self.parameters:
@@ -141,7 +142,8 @@ class MonolingualClassifier:
             self.model = GridSearchCV(self.model, param_grid=self.parameters, refit=True, cv=5, n_jobs=self.n_jobs,
                                       error_score=0, verbose=10)
 
-        print(f'fitting: {self.model} on matrices of shape X={X.shape} Y={y.shape}')
+        # print(f'fitting: {self.model} on matrices of shape X={X.shape} Y={y.shape}')
+        print(f'fitting: Mono-lingual Classifier on matrices of shape X={X.shape} Y={y.shape}')
         self.model.fit(X, y)
         if isinstance(self.model, GridSearchCV):
             self.best_params_ = self.model.best_params_
