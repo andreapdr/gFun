@@ -180,11 +180,26 @@ class MultilingualIndex:
             self.l_index[l] = Index(l_devel_raw[l], l_devel_target[l], l_test_raw[l], l)
             self.l_index[l].index(l_pretrained_vocabulary[l], l_analyzer[l], l_vocabulary[l])
 
+    def get_indexed(self, l_texts, pretrained_vocabulary=None):
+        assert len(self.l_index) != 0, 'Cannot index data without first index call to multilingual index!'
+        l_indexed = {}
+        for l, texts in l_texts.items():
+            if l in self.langs:
+                word2index = self.l_index[l].word2index
+                known_words = set(word2index.keys())
+                if pretrained_vocabulary[l] is not None:
+                    known_words.update(pretrained_vocabulary[l])
+                l_indexed[l] = index(texts,
+                                     vocab=word2index,
+                                     known_words=known_words,
+                                     analyzer=self.l_vectorizer.get_analyzer(l),
+                                     unk_index=word2index['UNKTOKEN'],
+                                     out_of_vocabulary=dict())
+        return l_indexed
+
     def train_val_split(self, val_prop=0.2, max_val=2000, seed=42):
         for l,index in self.l_index.items():
             index.train_val_split(val_prop, max_val, seed=seed)
-
-
 
     def embedding_matrices(self, lpretrained, supervised):
         lXtr = self.get_lXtr() if supervised else none_dict(self.langs)
@@ -385,7 +400,7 @@ class Batch:
     def init_offset(self):
         self.offset = {lang: 0 for lang in self.languages}
 
-    def batchify(self, l_index, l_post, l_bert, llabels):   # TODO: add bert embedding here...
+    def batchify(self, l_index, l_post, l_bert, llabels):
         langs = self.languages
         l_num_samples = {l:len(l_index[l]) for l in langs}
 
