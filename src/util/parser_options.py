@@ -24,7 +24,7 @@ parser.add_option('-G', dest='gruViewGenerator',  action='store_true',
 
 parser.add_option("--l2", dest="l2", action='store_true',
                   help="Activates l2 normalization as a post-processing for the document embedding views",
-                  default=False)
+                  default=True)
 
 parser.add_option("--allprob", dest="allprob", action='store_true',
                   help="All views are generated as posterior probabilities. This affects the supervised and pretrained"
@@ -51,10 +51,10 @@ parser.add_option("-p", "--pca", dest="max_labels_S", type=int,
                   default=300)
 
 parser.add_option("-r", "--remove-pc", dest="sif", action='store_true',
-                  help="Remove common component when computing dot product of word embedding matrices", default=False)
+                  help="Remove common component when computing dot product of word embedding matrices", default=True)
 
 parser.add_option("-z", "--zscore", dest="zscore", action='store_true',
-                  help="Z-score normalize matrices (WCE and MUSE)", default=False)
+                  help="Z-score normalize matrices (WCE and MUSE)", default=True)
 
 parser.add_option("-a", "--agg", dest="agg", action='store_true',
                   help="Set aggregation function of the common Z-space to average (Default: concatenation)",

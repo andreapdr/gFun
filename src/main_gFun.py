@@ -14,7 +14,8 @@ if __name__ == '__main__':
     assert not (op.set_c != 1. and op.optimc), 'Parameter C cannot be defined along with optim_c option'
     assert op.posteriors or op.supervised or op.pretrained or op.mbert or op.gruViewGenerator, \
         'empty set of document embeddings is not allowed'
-    assert (op.gruWCE or op.gruMUSE) and op.gruViewGenerator, 'Initializing Gated Recurrent embedding layer without ' \
+    if op.gruViewGenerator:
+        assert op.gruWCE or op.gruMUSE, 'Initializing Gated Recurrent embedding layer without ' \
                                                               'explicit initialization of GRU View Generator'
 
     l2 = op.l2
@@ -35,7 +36,7 @@ if __name__ == '__main__':
 
     # load dataset
     data = MultilingualDataset.load(dataset)
-    data.set_view(languages=['nl', 'it'])   # TODO: DEBUG SETTING
+    # data.set_view(languages=['nl', 'it'])   # TODO: DEBUG SETTING
     data.show_dimensions()
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
@@ -86,7 +87,6 @@ if __name__ == '__main__':
         document embeddings are then casted into vectors of posterior probabilities via a set of SVM.
         NB: --allprob won't have any effect on this View Gen since output is already encoded as post prob
         """
-        op.gru_path = '/home/andreapdr/funneling_pdr/checkpoint/gru_viewgen_-rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle'    # TODO DEBUG
         rnn_embedder = RecurrentEmbedder(pretrained=op.gruMUSE, supervised=op.gruWCE, multilingual_dataset=data,
                                          options=op, model_path=op.gru_path)
         doc_embedder.append(rnn_embedder)
@@ -95,7 +95,6 @@ if __name__ == '__main__':
         """
         View generator (-B): generates document embedding via mBERT model. 
         """
-        op.bert_path = '/home/andreapdr/funneling_pdr/hug_checkpoint/mBERT-rcv1-2_run0'    # TODO DEBUG
         mbert = MBertEmbedder(path_to_model=op.bert_path,
                               nC=data.num_categories())
         if op.allprob:

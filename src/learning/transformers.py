@@ -822,10 +822,12 @@ def clip_gradient(model, clip_value=1e-1):
 
 
 def init_logfile_nn(method_name, opt):
+    import os
     logfile = CSVLog(opt.logfile_gru, ['dataset', 'method', 'epoch', 'measure', 'value', 'run', 'timelapse'])
     logfile.set_default('dataset', opt.dataset)
     logfile.set_default('run', opt.seed)
-    logfile.set_default('method', method_name)
+    logfile.set_default('method', get_method_name(os.path.basename(opt.dataset), opt.posteriors, opt.supervised, opt.pretrained, opt.mbert,
+                                                opt.gruViewGenerator, opt.gruMUSE, opt.gruWCE, opt.agg, opt.allprob))
     assert opt.force or not logfile.already_calculated(), f'results for dataset {opt.dataset} method {method_name} ' \
                                                           f'and run {opt.seed} already calculated'
     return logfile
