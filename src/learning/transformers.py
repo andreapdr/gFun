@@ -330,6 +330,9 @@ class RecurrentEmbedder:
 
     def fit(self, lX, ly, lV=None, batch_size=64, nepochs=200, val_epochs=1):
         print('### Gated Recurrent Unit View Generator (G)')
+        # could be better to init model here at first .fit() call!
+        if self.model is None:
+            print('TODO: Init model!')
         if not self.is_trained:
             # Batchify input
             self.multilingual_index.train_val_split(val_prop=0.2, max_val=2000, seed=self.seed)

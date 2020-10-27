@@ -45,7 +45,7 @@ def average_results(l_eval, show=True):
 
 
 def evaluate_method(polylingual_method, lX, ly, predictor=None, soft=False, return_time=False):
-    tinit=time.time()
+    tinit = time.time()
     print('prediction for test')
     assert set(lX.keys()) == set(ly.keys()), 'inconsistent dictionaries in evaluate'
     n_jobs = polylingual_method.n_jobs if hasattr(polylingual_method, 'n_jobs') else -1
