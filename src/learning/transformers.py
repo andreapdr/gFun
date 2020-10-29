@@ -490,6 +490,8 @@ class DocEmbedderList:
 
     def transform_mean(self, lX, tfidf):
         if len(self.embedders) == 1:
+            if self.embedders[0].requires_tfidf:
+                lX = tfidf
             return self.embedders[0].transform(lX)
 
         langs = sorted(lX.keys())

@@ -29,7 +29,7 @@ parser.add_option("--l2", dest="l2", action='store_true',
 parser.add_option("--allprob", dest="allprob", action='store_true',
                   help="All views are generated as posterior probabilities. This affects the supervised and pretrained"
                        "embeddings, for which a calibrated classifier is generated, which generates the posteriors",
-                  default=False)
+                  default=True)
 
 parser.add_option("--feat-weight", dest="feat_weight",
                   help="Term weighting function to weight the averaged embeddings", type=str,  default='tfidf')
@@ -58,7 +58,7 @@ parser.add_option("-z", "--zscore", dest="zscore", action='store_true',
 
 parser.add_option("-a", "--agg", dest="agg", action='store_true',
                   help="Set aggregation function of the common Z-space to average (Default: concatenation)",
-                  default=False)
+                  default=True)
 
 # ------------------------------------------------------------------------------------
 
