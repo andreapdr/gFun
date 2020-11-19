@@ -4,7 +4,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from embeddings.supervised import get_supervised_embeddings
-# from learning.transformers import PosteriorProbabilitiesEmbedder, TfidfVectorizerMultilingual
 import numpy as np
 from tqdm import tqdm
 import torch

@@ -13,9 +13,10 @@ from scipy.sparse import csr_matrix
 from models.mBert import *
 from models.lstm_class import *
 from util.csv_log import CSVLog
-from util.file import get_file_name
+from util.file import get_file_name, create_if_not_exist, exists
 from util.early_stop import EarlyStopping
 from util.common import *
+import pickle
 import time
 
 
@@ -54,7 +55,6 @@ class FeatureWeight:
                     elif self.agg == 'mean':
                         F = tsr_matrix.mean(axis=0)
                     self.lF[l] = F
-
             self.fitted = True
         return self
 
@@ -71,7 +71,7 @@ class FeatureWeight:
 
 class PosteriorProbabilitiesEmbedder:
 
-    def __init__(self, first_tier_learner, first_tier_parameters=None, l2=True, n_jobs=-1):
+    def __init__(self, first_tier_learner, first_tier_parameters=None, l2=True, n_jobs=-1, is_training=True, storing_path='../dumps/'):
         self.fist_tier_learner = first_tier_learner
         self.fist_tier_parameters = first_tier_parameters
         self.l2 = l2
@@ -80,8 +80,13 @@ class PosteriorProbabilitiesEmbedder:
             self.fist_tier_learner, self.fist_tier_parameters, n_jobs=n_jobs
         )
         self.requires_tfidf = True
+        self.storing_path = storing_path
+        self.is_training = is_training
 
     def fit(self, lX, lY, lV=None, called_by_viewgen=False):
+        if exists(self.storing_path + '/tr') or exists(self.storing_path + '/te'):
+            print(f'NB: Avoid fitting {self.storing_path.split("/")[2]} since we have already pre-computed results')
+            return self
         if not called_by_viewgen:
             # Avoid printing if method is called by another View Gen (e.g., GRU ViewGen)
             print('### Posterior Probabilities View Generator (X)')
@@ -90,8 +95,22 @@ class PosteriorProbabilitiesEmbedder:
         return self
 
     def transform(self, lX):
+        # if dir exist, load and return already computed results
+        _endpoint = 'tr' if self.is_training else 'te'
+        _actual_path = self.storing_path + '/' + _endpoint
+        if exists(_actual_path):
+            print('NB: loading pre-computed results!')
+            with open(_actual_path + '/X.pickle', 'rb') as infile:
+                self.is_training = False
+                return pickle.load(infile)
+
         lZ = self.predict_proba(lX)
         lZ = _normalize(lZ, self.l2)
+        # create dir and dump computed results
+        create_if_not_exist(_actual_path)
+        with open(_actual_path + '/X.pickle', 'wb') as outfile:
+            pickle.dump(lZ, outfile)
+        self.is_training = False
         return lZ
 
     def fit_transform(self, lX, ly=None, lV=None):
@@ -105,10 +124,8 @@ class PosteriorProbabilitiesEmbedder:
 
     def predict_proba(self, lX, ly=None):
         print(f'generating posterior probabilities for {sum([X.shape[0] for X in lX.values()])} documents')
-        return self.doc_projector.predict_proba(lX)
-
-    def _get_output_dim(self):
-        return len(self.doc_projector.model['da'].model.classes_)
+        lZ = self.doc_projector.predict_proba(lX)
+        return lZ
 
 
 class MuseEmbedder:
@@ -222,8 +239,8 @@ class MBertEmbedder:
 
         tr_dataset = TrainingDataset(l_split_tr, l_split_tr_target)
         va_dataset = TrainingDataset(l_split_va, l_split_val_target)
-        tr_dataloader = DataLoader(tr_dataset, batch_size=4, shuffle=True)
-        va_dataloader = DataLoader(va_dataset, batch_size=2, shuffle=True)
+        tr_dataloader = DataLoader(tr_dataset, batch_size=64, shuffle=True)
+        va_dataloader = DataLoader(va_dataset, batch_size=64, shuffle=True)
 
         nC = tr_dataset.get_nclasses()
         model = get_model(nC)
@@ -272,7 +289,7 @@ class MBertEmbedder:
         l_tokenized_X = do_tokenization(lX, max_len=512, verbose=True)
         feat_dataset = ExtractorDataset(l_tokenized_X)
         feat_lang_ids = feat_dataset.lang_ids
-        dataloader = DataLoader(feat_dataset, batch_size=64)
+        dataloader = DataLoader(feat_dataset, batch_size=64)        # TODO reduced batch size in JRC experiments
         all_batch_embeddings, id2lang = feature_extractor(dataloader, feat_lang_ids, self.model)
         return all_batch_embeddings
 
@@ -326,15 +343,8 @@ class RecurrentEmbedder:
         self.early_stop = EarlyStopping(self.model, optimizer=self.optim, patience=self.patience,
                                         checkpoint=f'{self.checkpoint_dir}/gru_viewgen_-{get_file_name(self.options.dataset)}')
 
-
-        # Init SVM in order to recast (vstacked) document embeddings to vectors of Posterior Probabilities
-        self.posteriorEmbedder = MetaClassifier(
-            SVC(kernel='rbf', gamma='auto', probability=True, cache_size=1000, random_state=1), n_jobs=options.n_jobs)
-
-    def fit(self, lX, ly, lV=None, batch_size=64, nepochs=200, val_epochs=1):
+    def fit(self, lX, ly, lV=None, batch_size=128, nepochs=200, val_epochs=1):
         print('### Gated Recurrent Unit View Generator (G)')
-        # self.multilingual_index.get_indexed(lX, self.lpretrained_vocabulary)
-        # could be better to init model here at first .fit() call!
         if self.model is None:
             print('TODO: Init model!')
         if not self.is_trained:
@@ -358,7 +368,7 @@ class RecurrentEmbedder:
                           tinit=tinit, logfile=logfile, criterion=self.criterion, optim=self.optim,
                           epoch=epoch, method_name=method_name, opt=self.options, ltrain_posteriors=None,
                           ltrain_bert=None)
-                self.lr_scheduler.step()  # reduces the learning rate # TODO arg epoch?
+                self.lr_scheduler.step()
 
                 # validation step
                 macrof1 = test_gru(self.model, batcher_eval, l_val_index, None, None, l_val_target, tinit, epoch,
@@ -384,21 +394,15 @@ class RecurrentEmbedder:
                           ltrain_bert=None)
             self.is_trained = True
 
-        # Generate document embeddings in order to fit an SVM to recast them as vector for Posterior Probabilities
-        # lX = self._get_doc_embeddings(lX)
-        lX = self._get_doc_embeddings(self.multilingual_index.l_devel_index())
-        # Fit a ''multi-lingual'' SVM on the generated doc embeddings
-        self.posteriorEmbedder.fit(lX, ly)
         return self
 
     def transform(self, lX, batch_size=64):
         lX = self.multilingual_index.get_indexed(lX, self.lpretrained_vocabulary)
         lX = self._get_doc_embeddings(lX)
-        return self.posteriorEmbedder.predict_proba(lX)
+        return lX
 
     def fit_transform(self, lX, ly, lV=None):
-        # TODO
-        return 0
+        return self.fit(lX, ly).transform(lX)
 
     def _get_doc_embeddings(self, lX, batch_size=64):
         assert self.is_trained, 'Model is not trained, cannot call transform before fitting the model!'
@@ -418,7 +422,7 @@ class RecurrentEmbedder:
 
     # loads the MUSE embeddings if requested, or returns empty dictionaries otherwise
     def _load_pretrained_embeddings(self, we_path, langs):
-        lpretrained = lpretrained_vocabulary = self._none_dict(langs)   # TODO ?
+        lpretrained = lpretrained_vocabulary = self._none_dict(langs)
         lpretrained = load_muse_embeddings(we_path, langs, n_jobs=-1)
         lpretrained_vocabulary = {l: lpretrained[l].vocabulary() for l in langs}
         return lpretrained, lpretrained_vocabulary
@@ -495,26 +499,15 @@ class DocEmbedderList:
             return self.embedders[0].transform(lX)
 
         langs = sorted(lX.keys())
-
         lZparts = {l: None for l in langs}
-
-        # min_dim = min([transformer._get_output_dim() for transformer in self.embedders])
-        min_dim = 73        # TODO <---- this should be the number of target classes
 
         for transformer in self.embedders:
             _lX = lX
             if transformer.requires_tfidf:
                 _lX = tfidf
             lZ = transformer.transform(_lX)
-            nC = min([lZ[lang].shape[1] for lang in langs])
             for l in langs:
                 Z = lZ[l]
-                if Z.shape[1] > min_dim:
-                    print(
-                        f'Space Z matrix has more dimensions ({Z.shape[1]}) than the smallest representation {min_dim}.'
-                        f'Applying PCA(n_components={min_dim})')
-                    pca = PCA(n_components=min_dim)
-                    Z = pca.fit(Z).transform(Z)
                 if lZparts[l] is None:
                     lZparts[l] = Z
                 else:
@@ -535,7 +528,7 @@ class DocEmbedderList:
 
 
 class FeatureSet2Posteriors:
-    def __init__(self, transformer, requires_tfidf=False, l2=True, n_jobs=-1):
+    def __init__(self, transformer, method_id, requires_tfidf=False, l2=True, n_jobs=-1, storing_path='../dumps/'):
         self.transformer = transformer
         self.l2 = l2
         self.n_jobs = n_jobs
@@ -543,7 +536,15 @@ class FeatureSet2Posteriors:
             SVC(kernel='rbf', gamma='auto', probability=True, cache_size=1000, random_state=1), n_jobs=n_jobs)
         self.requires_tfidf = requires_tfidf
 
+        self.storing_path = storing_path
+        self.is_training = True
+        self.method_id = method_id
+
     def fit(self, lX, ly, lV=None):
+        if exists(self.storing_path + '/tr') or exists(self.storing_path + '/te'):
+            print(f'NB: Avoid fitting {self.storing_path.split("/")[2]} since we have already pre-computed results')
+            return self
+
         if lV is None and hasattr(self.transformer, 'lV'):
             lV = self.transformer.lV
         lZ = self.transformer.fit_transform(lX, ly, lV)
@@ -551,8 +552,22 @@ class FeatureSet2Posteriors:
         return self
 
     def transform(self, lX):
+        # if dir exist, load and return already computed results
+        _endpoint = 'tr' if self.is_training else 'te'
+        _actual_path = self.storing_path + '/' + _endpoint
+        if exists(_actual_path):
+            print('NB: loading pre-computed results!')
+            with open(_actual_path + '/' + self.method_id + '.pickle', 'rb') as infile:
+                self.is_training = False
+                return pickle.load(infile)
+
         lP = self.predict_proba(lX)
         lP = _normalize(lP, self.l2)
+        # create dir and dump computed results
+        create_if_not_exist(_actual_path)
+        with open(_actual_path + '/' + self.method_id + '.pickle', 'wb') as outfile:
+            pickle.dump(lP, outfile)
+        self.is_training = False
         return lP
 
     def fit_transform(self, lX, ly, lV):
@@ -691,7 +706,7 @@ def word_class_embedding_matrix(X, Y, max_label_space=300):
 def XdotM(X, M, sif):
     E = X.dot(M)
     if sif:
-        print("removing pc...")
+        # print("removing pc...")
         E = remove_pc(E, npc=1)
     return E
 
@@ -714,7 +729,7 @@ class BatchGRU:
 
     def batchify(self, l_index, l_post, l_bert, llabels, extractor=False):
         langs = self.languages
-        l_num_samples = {l:len(l_index[l]) for l in langs}
+        l_num_samples = {l: len(l_index[l]) for l in langs}
 
         max_samples = max(l_num_samples.values())
         n_batches = max_samples // self.batchsize + 1 * (max_samples % self.batchsize > 0)

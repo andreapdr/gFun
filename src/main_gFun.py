@@ -28,7 +28,7 @@ if __name__ == '__main__':
                                                 op.gruViewGenerator, op.gruMUSE, op.gruWCE, op.agg, op.allprob)
     print(f'Method: gFun{method_name}\nDataset: {dataset_name}')
     print('-'*50)
-    
+
     # set zscore range - is slice(0, 0) mean will be equal to 0 and std to 1, thus normalization will have no effect
     standardize_range = slice(0, 0)
     if op.zscore:
@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     # load dataset
     data = MultilingualDataset.load(dataset)
-    # data.set_view(languages=['nl', 'it'])   # TODO: DEBUG SETTING
+    data.set_view(languages=['nl', 'it'])   # TODO: DEBUG SETTING
     data.show_dimensions()
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
@@ -56,18 +56,26 @@ if __name__ == '__main__':
         View Generator (-X): cast document representations encoded via TFIDF into posterior probabilities by means
         of a set of SVM.
         """
+        # Check if we already have VG outputs from previous runs
+        VG_name = 'X'
+        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+        exist = exists(storing_path)
         doc_embedder.append(PosteriorProbabilitiesEmbedder(first_tier_learner=get_learner(calibrate=True,
                                                                                           kernel='linear',
-                                                                                          C=op.set_c), l2=l2))
+                                                                                          C=op.set_c),
+                                                           l2=l2, storing_path=storing_path))
 
     if op.supervised:
         """ 
         View Generator (-W): generates document representation via Word-Class-Embeddings.
         Document embeddings are obtained via weighted sum of document's constituent embeddings.
         """
+        VG_name = 'W'
+        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+        exist = exists(storing_path)
         wce = WordClassEmbedder(max_label_space=op.max_labels_S, l2=l2, featureweight=feat_weighting, sif=op.sif)
         if op.allprob:
-            wce = FeatureSet2Posteriors(wce, requires_tfidf=True, l2=l2)
+            wce = FeatureSet2Posteriors(wce, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path)
         doc_embedder.append(wce)
 
     if op.pretrained:
@@ -75,30 +83,41 @@ if __name__ == '__main__':
         View Generator (-M): generates document representation via MUSE embeddings (Fasttext multilingual word 
         embeddings). Document embeddings are obtained via weighted sum of document's constituent embeddings.
         """
+        VG_name = 'M'
+        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+        exist = exists(storing_path)
         muse = MuseEmbedder(op.we_path, l2=l2, featureweight=feat_weighting, sif=op.sif)
         if op.allprob:
-            muse = FeatureSet2Posteriors(muse, requires_tfidf=True, l2=l2)
+            muse = FeatureSet2Posteriors(muse, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path)
         doc_embedder.append(muse)
 
     if op.gruViewGenerator:
         """
         View Generator (-G): generates document embedding by means of a Gated Recurrent Units. The model can be 
-        initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,). Such 
-        document embeddings are then casted into vectors of posterior probabilities via a set of SVM.
-        NB: --allprob won't have any effect on this View Gen since output is already encoded as post prob
+        initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,). 
+        Output dimension is (n_docs, 512). If --allprob output will be casted to posterior prob space via SVM.
         """
+        VG_name = 'G'
+        VG_name += '_muse' if op.gruMUSE else ''
+        VG_name += '_wce' if op.gruWCE else ''
+        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
         rnn_embedder = RecurrentEmbedder(pretrained=op.gruMUSE, supervised=op.gruWCE, multilingual_dataset=data,
                                          options=op, model_path=op.gru_path)
+        if op.allprob:
+            rnn_embedder = FeatureSet2Posteriors(rnn_embedder, method_id=VG_name, requires_tfidf=False,
+                                                 storing_path=storing_path)
         doc_embedder.append(rnn_embedder)
 
     if op.mbert:
         """
         View generator (-B): generates document embedding via mBERT model. 
         """
-        mbert = MBertEmbedder(path_to_model=op.bert_path,
-                              nC=data.num_categories())
+        VG_name = 'B'
+        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+
+        mbert = MBertEmbedder(path_to_model=op.bert_path, nC=data.num_categories())
         if op.allprob:
-            mbert = FeatureSet2Posteriors(mbert, l2=l2)
+            mbert = FeatureSet2Posteriors(mbert, method_id=VG_name, l2=l2, storing_path=storing_path)
         doc_embedder.append(mbert)
 
     # metaclassifier

@@ -5,6 +5,7 @@ from transformers import BertForSequenceClassification, BertTokenizer, AdamW, Be
 from sklearn.model_selection import train_test_split
 from util.evaluation import *
 from time import time
+from util.common import show_gpu
 
 
 def predict(logits, classification_type='multilabel'):
@@ -21,7 +22,6 @@ def predict(logits, classification_type='multilabel'):
 class TrainingDataset(Dataset):
     """
     data: dict of lang specific tokenized data
-    labels: dict of lang specific targets
     """
 
     def __init__(self, data, labels):
@@ -156,7 +156,7 @@ def do_tokenization(l_dataset, max_len=512, verbose=True):
 def train(model, train_dataloader, epoch, criterion, optim, method_name, tinit, logfile, log_interval=10):
     # _dataset_path = opt.dataset.split('/')[-1].split('_')
     # dataset_id = _dataset_path[0] + _dataset_path[-1]
-    dataset_id = 'TODO fix this!'
+    dataset_id = 'TODO fix this!'   # TODO
 
     loss_history = []
     model.train()
@@ -231,12 +231,13 @@ def feature_extractor(data, lang_ids, model):
     Hidden State = Tuple of torch.FloatTensor (one for the output of the embeddings + one for 
     the output of each layer) of shape (batch_size, sequence_length, hidden_size)
     """
+    show_gpu('Before Training')
     all_batch_embeddings = {}
     id2lang = {v: k for k, v in lang_ids.items()}
     with torch.no_grad():
         for batch, lang_idx in data:
-        # for batch, target, lang_idx in data:
             out = model(batch.cuda())
+            # show_gpu('After Batch Prediction')
             last_hidden_state = out[1][-1]
             batch_embeddings = last_hidden_state[:, 0, :]
             for i, l_idx in enumerate(lang_idx.numpy()):
@@ -245,5 +246,5 @@ def feature_extractor(data, lang_ids, model):
                 else:
                     all_batch_embeddings[id2lang[l_idx]] = np.vstack((all_batch_embeddings[id2lang[l_idx]],
                                                                       batch_embeddings[i].detach().cpu().numpy()))
-
+        show_gpu('After Full Prediction')
     return all_batch_embeddings, id2lang
