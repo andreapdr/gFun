@@ -1,4 +1,4 @@
-# Heterogeneous Document Embeddings Code
+# Generalized Funnelling (Heterogeneous Document Embeddings) Code
 This repository contains the Python code developed for the experiments conducted pertaining Heterogeneous Document Embeddings in both traditional machine learning and deep learning sceneario (Msc Thesis).
 Concerning traditional machine learning the code implements variants to Funnelling algoirthm (TAT) proposed in the article "Esuli, A., Moreo, A., & Sebastiani, F. (2019). [Funnelling: A New Ensemble Method for Heterogeneous Transfer Learning and Its Application to Cross-Lingual Text Classification](https://dl.acm.org/citation.cfm?id=3326065). ACM Transactions on Information Systems (TOIS), 37(3), 37.".
 
