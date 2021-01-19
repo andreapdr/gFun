@@ -84,9 +84,9 @@ class PosteriorProbabilitiesEmbedder:
         self.is_training = is_training
 
     def fit(self, lX, lY, lV=None, called_by_viewgen=False):
-        if exists(self.storing_path + '/tr') or exists(self.storing_path + '/te'):
-            print(f'NB: Avoid fitting {self.storing_path.split("/")[2]} since we have already pre-computed results')
-            return self
+        # if exists(self.storing_path + '/tr') or exists(self.storing_path + '/te'):
+        #     print(f'NB: Avoid fitting {self.storing_path.split("/")[2]} since we have already pre-computed results')
+        #     return self
         if not called_by_viewgen:
             # Avoid printing if method is called by another View Gen (e.g., GRU ViewGen)
             print('### Posterior Probabilities View Generator (X)')
@@ -96,20 +96,20 @@ class PosteriorProbabilitiesEmbedder:
 
     def transform(self, lX):
         # if dir exist, load and return already computed results
-        _endpoint = 'tr' if self.is_training else 'te'
-        _actual_path = self.storing_path + '/' + _endpoint
-        if exists(_actual_path):
-            print('NB: loading pre-computed results!')
-            with open(_actual_path + '/X.pickle', 'rb') as infile:
-                self.is_training = False
-                return pickle.load(infile)
+        # _endpoint = 'tr' if self.is_training else 'te'
+        # _actual_path = self.storing_path + '/' + _endpoint
+        # if exists(_actual_path):
+        #     print('NB: loading pre-computed results!')
+        #     with open(_actual_path + '/X.pickle', 'rb') as infile:
+        #         self.is_training = False
+        #         return pickle.load(infile)
 
         lZ = self.predict_proba(lX)
         lZ = _normalize(lZ, self.l2)
         # create dir and dump computed results
-        create_if_not_exist(_actual_path)
-        with open(_actual_path + '/X.pickle', 'wb') as outfile:
-            pickle.dump(lZ, outfile)
+        # create_if_not_exist(_actual_path)
+        # with open(_actual_path + '/X.pickle', 'wb') as outfile:
+        #     pickle.dump(lZ, outfile)
         self.is_training = False
         return lZ
 
@@ -154,8 +154,7 @@ class MuseEmbedder:
         MUSE = self.MUSE
         lX = self.featureweight.transform(lX)
         XdotMUSE = Parallel(n_jobs=self.n_jobs)(
-            delayed(XdotM)(lX[lang], MUSE[lang], self.sif) for lang in self.langs
-        )
+            delayed(XdotM)(lX[lang], MUSE[lang], self.sif) for lang in self.langs)
         lMuse = {l: XdotMUSE[i] for i, l in enumerate(self.langs)}
         lMuse = _normalize(lMuse, self.l2)
         return lMuse
@@ -211,18 +210,22 @@ class WordClassEmbedder:
 class MBertEmbedder:
 
     def __init__(self, doc_embed_path=None, patience=10, checkpoint_dir='../hug_checkpoint/', path_to_model=None,
-                 nC=None):
+                 nC=None, avoid_loading=False):
         self.doc_embed_path = doc_embed_path
         self.patience = patience
         self.checkpoint_dir = checkpoint_dir
         self.fitted = False
         self.requires_tfidf = False
-        if path_to_model is None and nC is not None:
+        self.avoid_loading = avoid_loading
+        if path_to_model is None:
             self.model = None
         else:
             config = BertConfig.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True,
                                                 num_labels=nC)
-            self.model = BertForSequenceClassification.from_pretrained(path_to_model, config=config).cuda()
+            if self.avoid_loading:
+                self.model = None
+            else:
+                self.model = BertForSequenceClassification.from_pretrained(path_to_model, config=config).cuda() # TODO: setting model to None in order to avoid loading it onto gpu if we have already pre-computed results!
             self.fitted = True
 
     def fit(self, lX, ly, lV=None, seed=0, nepochs=200, lr=1e-5, val_epochs=1):
@@ -235,7 +238,7 @@ class MBertEmbedder:
         l_tokenized_tr = do_tokenization(lX, max_len=512)
         l_split_tr, l_split_tr_target, l_split_va, l_split_val_target = get_tr_val_split(l_tokenized_tr, ly,
                                                                                          val_prop=0.2, max_val=2000,
-                                                                                         seed=seed)     # TODO: seed
+                                                                                         seed=seed)
 
         tr_dataset = TrainingDataset(l_split_tr, l_split_tr_target)
         va_dataset = TrainingDataset(l_split_va, l_split_val_target)
@@ -289,7 +292,7 @@ class MBertEmbedder:
         l_tokenized_X = do_tokenization(lX, max_len=512, verbose=True)
         feat_dataset = ExtractorDataset(l_tokenized_X)
         feat_lang_ids = feat_dataset.lang_ids
-        dataloader = DataLoader(feat_dataset, batch_size=64)        # TODO reduced batch size in JRC experiments
+        dataloader = DataLoader(feat_dataset, batch_size=64)
         all_batch_embeddings, id2lang = feature_extractor(dataloader, feat_lang_ids, self.model)
         return all_batch_embeddings
 
@@ -301,7 +304,7 @@ class RecurrentEmbedder:
 
     def __init__(self, pretrained, supervised, multilingual_dataset, options, concat=False, lr=1e-3,
                  we_path='../embeddings', hidden_size=512, sup_drop=0.5, posteriors=False, patience=10,
-                 test_each=0, checkpoint_dir='../checkpoint', model_path=None):
+                 test_each=0, checkpoint_dir='../checkpoint', model_path=None, n_jobs=-1):
         self.pretrained = pretrained
         self.supervised = supervised
         self.concat = concat
@@ -319,6 +322,7 @@ class RecurrentEmbedder:
         self.options = options
         self.seed = options.seed
         self.model_path = model_path
+        self.n_jobs = n_jobs
         self.is_trained = False
 
         ## INIT MODEL for training
@@ -398,32 +402,33 @@ class RecurrentEmbedder:
 
     def transform(self, lX, batch_size=64):
         lX = self.multilingual_index.get_indexed(lX, self.lpretrained_vocabulary)
-        lX = self._get_doc_embeddings(lX)
+        lX = self._get_doc_embeddings(lX, batch_size)
         return lX
 
     def fit_transform(self, lX, ly, lV=None):
         return self.fit(lX, ly).transform(lX)
 
-    def _get_doc_embeddings(self, lX, batch_size=64):
+    def _get_doc_embeddings(self, lX, batch_size):
         assert self.is_trained, 'Model is not trained, cannot call transform before fitting the model!'
         print('Generating document embeddings via GRU')
         _lX = {}
 
         l_devel_target = self.multilingual_index.l_devel_target()
 
+        # show_gpu('RNN init at extraction')
         for idx, (batch, post, target, lang) in enumerate(batchify(lX, None, l_devel_target,
                                                                    batch_size, self.multilingual_index.l_pad())):
             if lang not in _lX.keys():
                 _lX[lang] = self.model.get_embeddings(batch, lang)
             else:
                 _lX[lang] = np.concatenate((_lX[lang], self.model.get_embeddings(batch, lang)), axis=0)
-
+            # show_gpu('RNN after batch pred at extraction')
         return _lX
 
     # loads the MUSE embeddings if requested, or returns empty dictionaries otherwise
     def _load_pretrained_embeddings(self, we_path, langs):
         lpretrained = lpretrained_vocabulary = self._none_dict(langs)
-        lpretrained = load_muse_embeddings(we_path, langs, n_jobs=-1)
+        lpretrained = load_muse_embeddings(we_path, langs, n_jobs=self.n_jobs)
         lpretrained_vocabulary = {l: lpretrained[l].vocabulary() for l in langs}
         return lpretrained, lpretrained_vocabulary
 
@@ -553,20 +558,20 @@ class FeatureSet2Posteriors:
 
     def transform(self, lX):
         # if dir exist, load and return already computed results
-        _endpoint = 'tr' if self.is_training else 'te'
-        _actual_path = self.storing_path + '/' + _endpoint
-        if exists(_actual_path):
-            print('NB: loading pre-computed results!')
-            with open(_actual_path + '/' + self.method_id + '.pickle', 'rb') as infile:
-                self.is_training = False
-                return pickle.load(infile)
+        # _endpoint = 'tr' if self.is_training else 'te'
+        # _actual_path = self.storing_path + '/' + _endpoint
+        # if exists(_actual_path):
+        #     print('NB: loading pre-computed results!')
+        #     with open(_actual_path + '/' + self.method_id + '.pickle', 'rb') as infile:
+        #         self.is_training = False
+        #         return pickle.load(infile)
 
         lP = self.predict_proba(lX)
         lP = _normalize(lP, self.l2)
         # create dir and dump computed results
-        create_if_not_exist(_actual_path)
-        with open(_actual_path + '/' + self.method_id + '.pickle', 'wb') as outfile:
-            pickle.dump(lP, outfile)
+        # create_if_not_exist(_actual_path)
+        # with open(_actual_path + '/' + self.method_id + '.pickle', 'wb') as outfile:
+        #     pickle.dump(lP, outfile)
         self.is_training = False
         return lP
 
@@ -637,8 +642,14 @@ class Funnelling:
         self.meta = meta
         self.n_jobs = meta.n_jobs
 
-    def fit(self, lX, ly):
-        tfidf_lX = self.vectorizer.fit_transform(lX, ly)
+    def fit(self, lX, ly, target_lang=None):
+        if target_lang is not None:
+            LX = lX.copy()
+            LX.update(target_lang)
+            self.vectorizer.fit(LX)
+            tfidf_lX = self.vectorizer.transform(lX)
+        else:
+            tfidf_lX = self.vectorizer.fit_transform(lX, ly)
         lV = self.vectorizer.vocabulary()
         print('## Fitting first-tier learners!')
         lZ = self.first_tier.fit_transform(lX, ly, lV, tfidf=tfidf_lX)
@@ -774,6 +785,7 @@ def train_gru(model, batcher, ltrain_index, lytr, tinit, logfile, criterion, opt
     _dataset_path = opt.dataset.split('/')[-1].split('_')
     dataset_id = _dataset_path[0] + _dataset_path[-1]
 
+    # show_gpu('RNN init pre-training')
     loss_history = []
     model.train()
     for idx, (batch, post, bert_emb, target, lang) in enumerate(batcher.batchify(ltrain_index, ltrain_posteriors, ltrain_bert, lytr)):
@@ -783,6 +795,7 @@ def train_gru(model, batcher, ltrain_index, lytr, tinit, logfile, criterion, opt
         clip_gradient(model)
         optim.step()
         loss_history.append(loss.item())
+        # show_gpu('RNN after batch prediction')
 
         if idx % log_interval == 0:
             interval_loss = np.mean(loss_history[-log_interval:])
@@ -810,7 +823,7 @@ def test_gru(model, batcher, ltest_index, ltest_posteriors, lte_bert, lyte, tini
         yte_stacked[lang].append(target.detach().cpu().numpy())
         loss_history.append(loss)
 
-    ly  = {l:np.vstack(yte_stacked[l]) for l in langs}
+    ly = {l:np.vstack(yte_stacked[l]) for l in langs}
     ly_ = {l:np.vstack(predictions[l]) for l in langs}
     l_eval = evaluate(ly, ly_)
     metrics = []

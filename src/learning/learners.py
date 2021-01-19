@@ -148,7 +148,7 @@ class MonolingualClassifier:
         if isinstance(self.model, GridSearchCV):
             self.best_params_ = self.model.best_params_
             print('best parameters: ', self.best_params_)
-        self.time=time.time()-tinit
+        self.time = time.time()-tinit
         return self
 
     def decision_function(self, X):

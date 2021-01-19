@@ -13,30 +13,31 @@ if __name__ == '__main__':
     assert exists(dataset), 'Unable to find file '+str(dataset)
     assert not (op.set_c != 1. and op.optimc), 'Parameter C cannot be defined along with optim_c option'
     assert op.posteriors or op.supervised or op.pretrained or op.mbert or op.gruViewGenerator, \
-        'empty set of document embeddings is not allowed'
+                                                            'empty set of document embeddings is not allowed'
     if op.gruViewGenerator:
         assert op.gruWCE or op.gruMUSE, 'Initializing Gated Recurrent embedding layer without ' \
-                                                              'explicit initialization of GRU View Generator'
+                                                            'explicit initialization of GRU View Generator'
 
     l2 = op.l2
     dataset_file = os.path.basename(dataset)
     results = PolylingualClassificationResults('../log/' + op.output)
     allprob = 'Prob' if op.allprob else ''
 
-    # renaming arguments to be printed on log
     method_name, dataset_name = get_method_name(dataset, op.posteriors, op.supervised, op.pretrained, op.mbert,
                                                 op.gruViewGenerator, op.gruMUSE, op.gruWCE, op.agg, op.allprob)
+
     print(f'Method: gFun{method_name}\nDataset: {dataset_name}')
     print('-'*50)
 
-    # set zscore range - is slice(0, 0) mean will be equal to 0 and std to 1, thus normalization will have no effect
+    n_jobs = -1  # TODO SETTING n_JOBS
+
     standardize_range = slice(0, 0)
     if op.zscore:
         standardize_range = None
 
     # load dataset
     data = MultilingualDataset.load(dataset)
-    data.set_view(languages=['nl', 'it'])   # TODO: DEBUG SETTING
+    # data.set_view(languages=['it'])   # TODO: DEBUG SETTING
     data.show_dimensions()
     lXtr, lytr = data.training()
     lXte, lyte = data.test()
@@ -63,7 +64,7 @@ if __name__ == '__main__':
         doc_embedder.append(PosteriorProbabilitiesEmbedder(first_tier_learner=get_learner(calibrate=True,
                                                                                           kernel='linear',
                                                                                           C=op.set_c),
-                                                           l2=l2, storing_path=storing_path))
+                                                           l2=l2, storing_path=storing_path, n_jobs=n_jobs))
 
     if op.supervised:
         """ 
@@ -73,9 +74,11 @@ if __name__ == '__main__':
         VG_name = 'W'
         storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
         exist = exists(storing_path)
-        wce = WordClassEmbedder(max_label_space=op.max_labels_S, l2=l2, featureweight=feat_weighting, sif=op.sif)
+        wce = WordClassEmbedder(max_label_space=op.max_labels_S, l2=l2, featureweight=feat_weighting,
+                                sif=op.sif, n_jobs=n_jobs)
         if op.allprob:
-            wce = FeatureSet2Posteriors(wce, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path)
+            wce = FeatureSet2Posteriors(wce, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path,
+                                        n_jobs=n_jobs)
         doc_embedder.append(wce)
 
     if op.pretrained:
@@ -86,9 +89,10 @@ if __name__ == '__main__':
         VG_name = 'M'
         storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
         exist = exists(storing_path)
-        muse = MuseEmbedder(op.we_path, l2=l2, featureweight=feat_weighting, sif=op.sif)
+        muse = MuseEmbedder(op.we_path, l2=l2, featureweight=feat_weighting, sif=op.sif, n_jobs=n_jobs)
         if op.allprob:
-            muse = FeatureSet2Posteriors(muse, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path)
+            muse = FeatureSet2Posteriors(muse, method_id=VG_name, requires_tfidf=True, l2=l2, storing_path=storing_path,
+                                         n_jobs=n_jobs)
         doc_embedder.append(muse)
 
     if op.gruViewGenerator:
@@ -100,12 +104,12 @@ if __name__ == '__main__':
         VG_name = 'G'
         VG_name += '_muse' if op.gruMUSE else ''
         VG_name += '_wce' if op.gruWCE else ''
-        storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+        storing_path = 'Nope' # f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
         rnn_embedder = RecurrentEmbedder(pretrained=op.gruMUSE, supervised=op.gruWCE, multilingual_dataset=data,
-                                         options=op, model_path=op.gru_path)
+                                         options=op, model_path=None, n_jobs=n_jobs)
         if op.allprob:
             rnn_embedder = FeatureSet2Posteriors(rnn_embedder, method_id=VG_name, requires_tfidf=False,
-                                                 storing_path=storing_path)
+                                                 storing_path=storing_path, n_jobs=n_jobs)
         doc_embedder.append(rnn_embedder)
 
     if op.mbert:
@@ -114,8 +118,9 @@ if __name__ == '__main__':
         """
         VG_name = 'B'
         storing_path = f'../dumps/{VG_name}/{dataset_name.split(".")[0]}'
+        avoid_loading = False if op.avoid_loading else True # TODO research setting (set to false mBert will be loaded into gpu to get doc emebds (aka, only the first time for each run))
 
-        mbert = MBertEmbedder(path_to_model=op.bert_path, nC=data.num_categories())
+        mbert = MBertEmbedder(path_to_model=op.bert_path, nC=data.num_categories(), avoid_loading=avoid_loading)
         if op.allprob:
             mbert = FeatureSet2Posteriors(mbert, method_id=VG_name, l2=l2, storing_path=storing_path)
         doc_embedder.append(mbert)
@@ -123,7 +128,7 @@ if __name__ == '__main__':
     # metaclassifier
     meta_parameters = None if op.set_c != -1 else [{'C': [1, 1e3, 1e2, 1e1, 1e-1]}]
     meta = MetaClassifier(meta_learner=get_learner(calibrate=False, kernel='rbf', C=op.set_c),
-                          meta_parameters=get_params(op.optimc), standardize_range=standardize_range)
+                          meta_parameters=get_params(op.optimc), standardize_range=standardize_range, n_jobs=n_jobs)
 
     # ensembling the modules
     classifier = Funnelling(vectorizer=tfidfvectorizer, first_tier=doc_embedder, meta=meta)

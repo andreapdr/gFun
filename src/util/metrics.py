@@ -1,5 +1,4 @@
 import numpy as np
-import numpy as np
 from scipy.sparse import lil_matrix, issparse
 from sklearn.metrics import f1_score, accuracy_score
 

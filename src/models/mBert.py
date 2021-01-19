@@ -20,9 +20,6 @@ def predict(logits, classification_type='multilabel'):
 
 
 class TrainingDataset(Dataset):
-    """
-    data: dict of lang specific tokenized data
-    """
 
     def __init__(self, data, labels):
         self.langs = data.keys()
@@ -231,7 +228,7 @@ def feature_extractor(data, lang_ids, model):
     Hidden State = Tuple of torch.FloatTensor (one for the output of the embeddings + one for 
     the output of each layer) of shape (batch_size, sequence_length, hidden_size)
     """
-    show_gpu('Before Training')
+    # show_gpu('Before Training')
     all_batch_embeddings = {}
     id2lang = {v: k for k, v in lang_ids.items()}
     with torch.no_grad():
@@ -246,5 +243,5 @@ def feature_extractor(data, lang_ids, model):
                 else:
                     all_batch_embeddings[id2lang[l_idx]] = np.vstack((all_batch_embeddings[id2lang[l_idx]],
                                                                       batch_embeddings[i].detach().cpu().numpy()))
-        show_gpu('After Full Prediction')
+        # show_gpu('After Full Prediction')
     return all_batch_embeddings, id2lang

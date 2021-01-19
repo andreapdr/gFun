@@ -74,7 +74,7 @@ class Index:
         self.test_raw = test_raw
 
     def index(self, pretrained_vocabulary, analyzer, vocabulary):
-        self.word2index = dict(vocabulary)
+        self.word2index = dict(vocabulary)  # word2idx
         known_words = set(self.word2index.keys())
         if pretrained_vocabulary is not None:
             known_words.update(pretrained_vocabulary)
@@ -207,44 +207,6 @@ class MultilingualIndex:
             index.compose_embedding_matrix(lpretrained[l], supervised, lXtr[l], lYtr[l])
             self.sup_range = index.wce_range
 
-    # TODO circular import with transformers --> when generating posterior prob, we import PosteriorProbabilitiesEmbedder which is defined in transformers
-    # def posterior_probabilities(self, max_training_docs_by_lang=5000, store_posteriors=False, stored_post=False):
-    #     # choose a maximum of "max_training_docs_by_lang" for training the calibrated SVMs
-    #     timeit = time.time()
-    #     lXtr = {l:Xtr for l,Xtr in self.get_lXtr().items()}
-    #     lYtr = {l:Ytr for l,Ytr in self.l_train_target().items()}
-    #     if not stored_post:
-    #         for l in self.langs:
-    #             n_elements = lXtr[l].shape[0]
-    #             if n_elements > max_training_docs_by_lang:
-    #                 choice = np.random.permutation(n_elements)[:max_training_docs_by_lang]
-    #                 lXtr[l] = lXtr[l][choice]
-    #                 lYtr[l] = lYtr[l][choice]
-    #
-    #         # train the posterior probabilities embedder
-    #         print('[posteriors] training a calibrated SVM')
-    #         learner = SVC(kernel='linear', probability=True, cache_size=1000, C=1, random_state=1, gamma='auto')
-    #         prob_embedder = PosteriorProbabilitiesEmbedder(learner, l2=False)
-    #         prob_embedder.fit(lXtr, lYtr)
-    #
-    #         # transforms the training, validation, and test sets into posterior probabilities
-    #         print('[posteriors] generating posterior probabilities')
-    #         lPtr = prob_embedder.transform(self.get_lXtr())
-    #         lPva = prob_embedder.transform(self.get_lXva())
-    #         lPte = prob_embedder.transform(self.get_lXte())
-    #     # NB: Check splits indices !
-    #         if store_posteriors:
-    #             import pickle
-    #             with open('../dumps/posteriors_fulljrc.pkl', 'wb') as outfile:
-    #                 pickle.dump([lPtr, lPva, lPte], outfile)
-    #                 print(f'Successfully dumped posteriors!')
-    #     else:
-    #         import pickle
-    #         with open('../dumps/posteriors_fulljrc.pkl', 'rb') as infile:
-    #             lPtr, lPva, lPte = pickle.load(infile)
-    #             print(f'Successfully loaded stored posteriors!')
-    #     print(f'[posteriors] done in {time.time() - timeit}')
-    #     return lPtr, lPva, lPte
 
     def bert_embeddings(self, bert_path, max_len=512, batch_size=64, stored_embeddings=False):
         show_gpu('GPU memory before initializing mBert model:')
@@ -518,10 +480,12 @@ class TfidfVectorizerMultilingual:
     def fit(self, lX, ly=None):
         self.langs = sorted(lX.keys())
         self.vectorizer = {l: TfidfVectorizer(**self.kwargs).fit(lX[l]) for l in self.langs}
+        # self.vectorizer = {l: TfidfVectorizer(**self.kwargs).fit(lX[l]) for l in lX.keys()}
         return self
 
     def transform(self, lX):
         return {l: self.vectorizer[l].transform(lX[l]) for l in self.langs}
+        # return {l: self.vectorizer[l].transform(lX[l]) for l in lX.keys()}
 
     def fit_transform(self, lX, ly=None):
         return self.fit(lX, ly).transform(lX)
@@ -568,3 +532,11 @@ def get_method_name(dataset, posteriors, supervised, pretrained, mbert, gru,
     dataset_id = _dataset_path[0] + _dataset_path[-1]
     return _id, dataset_id
 
+
+def get_zscl_setting(langs):
+    settings = []
+    for elem in langs:
+        for tar in langs:
+            if elem != tar:
+                settings.append((elem, tar))
+    return settings

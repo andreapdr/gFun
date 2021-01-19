@@ -60,6 +60,9 @@ parser.add_option("-a", "--agg", dest="agg", action='store_true',
                   help="Set aggregation function of the common Z-space to average (Default: concatenation)",
                   default=True)
 
+parser.add_option("-l", dest="avoid_loading", action="store_true",
+                  help="TODO", default=False)
+
 # ------------------------------------------------------------------------------------
 
 parser.add_option('--hidden', type=int, default=512, metavar='int',
