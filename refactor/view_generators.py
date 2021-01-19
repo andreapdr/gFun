@@ -205,7 +205,7 @@ class RecurrentGen(ViewGen):
         :return:
         """
         recurrentDataModule = GfunDataModule(self.multilingualIndex, batchsize=self.batch_size)
-        trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=50)
+        trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=50, checkpoint_callback=False)
 
         # vanilla_torch_model = torch.load(
         #     '/home/andreapdr/funneling_pdr/checkpoint/gru_viewgen_-jrc_doclist_1958-2005vs2006_all_top300_noparallel_processed_run0.pickle')

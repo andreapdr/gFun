@@ -1,43 +1,17 @@
+# Lightning modules, see https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html
 import torch
 from torch import nn
-from torch.optim import Adam
 from transformers import AdamW
 import torch.nn.functional as F
 from torch.autograd import Variable
 import pytorch_lightning as pl
 from pytorch_lightning.metrics import F1, Accuracy, Metric
 from torch.optim.lr_scheduler import StepLR
-
-from util.evaluation import evaluate
 from typing import Any, Optional, Tuple
 from pytorch_lightning.metrics.utils import _input_format_classification_one_hot, class_reduce
+from models.helpers import init_embeddings
 import numpy as np
-
-
-def init_embeddings(pretrained, vocab_size, learnable_length):
-    """
-    Compute the embedding matrix
-    :param pretrained:
-    :param vocab_size:
-    :param learnable_length:
-    :return:
-    """
-    pretrained_embeddings = None
-    pretrained_length = 0
-    if pretrained is not None:
-        pretrained_length = pretrained.shape[1]
-        assert pretrained.shape[0] == vocab_size, 'pre-trained matrix does not match with the vocabulary size'
-        pretrained_embeddings = nn.Embedding(vocab_size, pretrained_length)
-        # requires_grad=False sets the embedding layer as NOT trainable
-        pretrained_embeddings.weight = nn.Parameter(pretrained, requires_grad=False)
-
-    learnable_embeddings = None
-    if learnable_length > 0:
-        learnable_embeddings = nn.Embedding(vocab_size, learnable_length)
-
-    embedding_length = learnable_length + pretrained_length
-    assert embedding_length > 0, '0-size embeddings'
-    return pretrained_embeddings, learnable_embeddings, embedding_length
+from util.evaluation import evaluate
 
 
 class RecurrentModel(pl.LightningModule):
@@ -97,7 +71,7 @@ class RecurrentModel(pl.LightningModule):
         self.label = nn.Linear(ff2, self.output_size)
 
         lPretrained = None  # TODO: setting lPretrained to None, letting it to its original value will bug first
-                            #  validation step (i.e., checkpoint will store also its ++ value, I guess, making the saving process too slow)
+        #  validation step (i.e., checkpoint will store also its ++ value, I guess, making the saving process too slow)
         self.save_hyperparameters()
 
     def forward(self, lX):
@@ -124,7 +98,6 @@ class RecurrentModel(pl.LightningModule):
         return output
 
     def training_step(self, train_batch, batch_idx):
-        # TODO: double check StepLR scheduler...
         lX, ly = train_batch
         logits = self.forward(lX)
         _ly = []
@@ -132,20 +105,14 @@ class RecurrentModel(pl.LightningModule):
             _ly.append(ly[lang])
         ly = torch.cat(_ly, dim=0)
         loss = self.loss(logits, ly)
-
         # Squashing logits through Sigmoid in order to get confidence score
         predictions = torch.sigmoid(logits) > 0.5
-
-        # microf1 = self.microf1(predictions, ly)
-        # macrof1 = self.macrof1(predictions, ly)
         accuracy = self.accuracy(predictions, ly)
-        # l_pred = {lang: predictions.detach().cpu().numpy()}
-        # l_labels = {lang: ly.detach().cpu().numpy()}
-        # l_eval = evaluate(l_labels, l_pred, n_jobs=1)
-
-        self.log('train-loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        custom = self.customMetrics(predictions, ly)
+        self.log('train-loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        return loss
+        self.log('custom', custom, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return {'loss': loss}
 
     def validation_step(self, val_batch, batch_idx):
         lX, ly = val_batch
@@ -156,17 +123,10 @@ class RecurrentModel(pl.LightningModule):
         ly = torch.cat(_ly, dim=0)
         loss = self.loss(logits, ly)
         predictions = torch.sigmoid(logits) > 0.5
-        # microf1 = self.microf1(predictions, ly)
-        # macrof1 = self.macrof1(predictions, ly)
         accuracy = self.accuracy(predictions, ly)
-
-        # l_pred = {lang: predictions.detach().cpu().numpy()}
-        # l_labels = {lang: y.detach().cpu().numpy()}
-        # l_eval = evaluate(l_labels, l_pred, n_jobs=1)
-
-        self.log('val-loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val-loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('val-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        return
+        return {'loss': loss}
 
     def test_step(self, test_batch, batch_idx):
         lX, ly = test_batch
@@ -177,18 +137,9 @@ class RecurrentModel(pl.LightningModule):
         ly = torch.cat(_ly, dim=0)
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, ly)
-        custom_metric = self.customMetrics(logits, ly)  # TODO
         self.log('test-accuracy', accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log('test-custom', custom_metric, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        return {'pred': predictions, 'target': ly}
-
-    def test_epoch_end(self, outputs):
-        # all_pred = torch.vstack([out['pred'] for out in outputs])   # TODO
-        # all_y = torch.vstack([out['target'] for out in outputs])    # TODO
-        # r = eval(all_y, all_pred)
-        # print(r)
-        # X = torch.cat(X).view([X[0].shape[0], len(X)])
         return
+        # return {'pred': predictions, 'target': ly}
 
     def embed(self, X, lang):
         input_list = []
@@ -308,5 +259,5 @@ def _fbeta_compute(
     new_den = 2 * true_positives + new_fp + new_fn
     if new_den.sum() == 0:
         # whats is the correct return type ? TODO
-        return 1.
+        return class_reduce(new_num, new_den, weights=actual_positives, class_reduction=average)
     return class_reduce(num, denom, weights=actual_positives, class_reduction=average)

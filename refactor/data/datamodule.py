@@ -103,7 +103,6 @@ class GfunDataModule(pl.LightningDataModule):
         pass
 
     def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             l_train_index, l_train_target = self.multilingualIndex.l_train()
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
@@ -111,9 +110,8 @@ class GfunDataModule(pl.LightningDataModule):
             l_val_index, l_val_target = self.multilingualIndex.l_val()
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
-        # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            l_test_index, l_test_target = self.multilingualIndex.l_val()
+            l_test_index, l_test_target = self.multilingualIndex.l_test()
             self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
                                                  lPad_index=self.multilingualIndex.l_pad())
 
@@ -136,7 +134,6 @@ class BertDataModule(GfunDataModule):
         self.max_len = max_len
 
     def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
             l_train_raw, l_train_target = self.multilingualIndex.l_train_raw()
             l_train_index = self.tokenize(l_train_raw, max_len=self.max_len)
@@ -146,12 +143,11 @@ class BertDataModule(GfunDataModule):
             l_val_index = self.tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
-        # Assign test dataset for use in dataloader(s)
         # TODO
         if stage == 'test' or stage is None:
-            l_val_raw, l_val_target = self.multilingualIndex.l_test_raw()
-            l_val_index = self.tokenize(l_val_raw)
-            self.test_dataset = RecurrentDataset(l_val_index, l_val_target,
+            l_test_raw, l_test_target = self.multilingualIndex.l_test_raw()
+            l_test_index = self.tokenize(l_val_raw, max_len=self.max_len)
+            self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
                                                  lPad_index=self.multilingualIndex.l_pad())
 
     @staticmethod

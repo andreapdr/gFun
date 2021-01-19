@@ -52,7 +52,7 @@ class MultilingualIndex:
         self.l_index = {}
         self.l_vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
-    def index(self, l_devel_raw, l_devel_target, l_test_raw, l_pretrained_vocabulary=None):
+    def index(self, l_devel_raw, l_devel_target, l_test_raw, l_test_target, l_pretrained_vocabulary=None):
         self.langs = sorted(l_devel_raw.keys())
         self.l_vectorizer.fit(l_devel_raw)
         l_vocabulary = self.l_vectorizer.vocabulary()
@@ -62,7 +62,7 @@ class MultilingualIndex:
 
         for lang in self.langs:
             # Init monolingual Index
-            self.l_index[lang] = Index(l_devel_raw[lang], l_devel_target[lang], l_test_raw[lang], lang)
+            self.l_index[lang] = Index(l_devel_raw[lang], l_devel_target[lang], l_test_raw[lang], l_test_target[lang], lang)
             # call to index() function of monolingual Index
             self.l_index[lang].index(l_pretrained_vocabulary[lang], l_analyzer[lang], l_vocabulary[lang])
 
@@ -163,6 +163,9 @@ class MultilingualIndex:
     def l_val_target(self):
         return {l: index.val_target for l, index in self.l_index.items()}
 
+    def l_test_target(self):
+        return {l: index.test_target for l, index in self.l_index.items()}
+
     def l_test_index(self):
         return {l: index.test_index for l, index in self.l_index.items()}
 
@@ -182,6 +185,9 @@ class MultilingualIndex:
     def l_val(self):
         return self.l_val_index(), self.l_val_target()
 
+    def l_test(self):
+        return self.l_test_index(), self.l_test_target()
+
     def l_train_raw(self):
         return self.l_train_raw_index(), self.l_train_target()
 
@@ -193,7 +199,7 @@ class MultilingualIndex:
 
 
 class Index:
-    def __init__(self, devel_raw, devel_target, test_raw, lang):
+    def __init__(self, devel_raw, devel_target, test_raw, test_target, lang):
         """
         Monolingual Index, takes care of tokenizing raw data, converting strings to ids, splitting the data into
         training and validation.
@@ -206,6 +212,7 @@ class Index:
         self.devel_raw = devel_raw
         self.devel_target = devel_target
         self.test_raw = test_raw
+        self.test_target = test_target
 
     def index(self, pretrained_vocabulary, analyzer, vocabulary):
         self.word2index = dict(vocabulary)
