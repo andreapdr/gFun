@@ -1,15 +1,25 @@
 import torch
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import StepLR
-from transformers import BertForSequenceClassification, BertTokenizer, AdamW, BertConfig
-from pytorch_lightning.metrics import F1, Accuracy, Metric
+from transformers import BertForSequenceClassification, AdamW
+from pytorch_lightning.metrics import Accuracy
+from util.pl_metrics import CustomF1
 
 
 class BertModel(pl.LightningModule):
 
-    def __init__(self, output_size, stored_path):
+    def __init__(self, output_size, stored_path, gpus=None):
         super().__init__()
         self.loss = torch.nn.BCEWithLogitsLoss()
+        self.gpus = gpus
+        self.accuracy = Accuracy()
+        self.microF1_tr = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
+        self.macroF1_tr = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.microF1_va = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
+        self.macroF1_va = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.microF1_te = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
+        self.macroF1_te = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+
         if stored_path:
             self.bert = BertForSequenceClassification.from_pretrained(stored_path,
                                                                       num_labels=output_size,
@@ -18,7 +28,6 @@ class BertModel(pl.LightningModule):
             self.bert = BertForSequenceClassification.from_pretrained('bert-base-multilingual-cased',
                                                                       num_labels=output_size,
                                                                       output_hidden_states=True)
-        self.accuracy = Accuracy()
         self.save_hyperparameters()
 
     def forward(self, X):
@@ -31,11 +40,16 @@ class BertModel(pl.LightningModule):
         y = y.type(torch.cuda.FloatTensor)
         logits, _ = self.forward(X)
         loss = self.loss(logits, y)
+        # Squashing logits through Sigmoid in order to get confidence score
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, y)
-        self.log('train-loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        microF1 = self.microF1_tr(predictions, y)
+        macroF1 = self.macroF1_tr(predictions, y)
+        self.log('train-loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        return loss
+        self.log('train-macroF1', macroF1, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train-microF1', microF1, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        return {'loss': loss}
 
     def validation_step(self, val_batch, batch_idx):
         X, y, _, batch_langs = val_batch
@@ -45,9 +59,29 @@ class BertModel(pl.LightningModule):
         loss = self.loss(logits, y)
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, y)
-        self.log('val-loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        microF1 = self.microF1_va(predictions, y)
+        macroF1 = self.macroF1_va(predictions, y)
+        self.log('val-loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('val-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        return
+        self.log('val-macroF1', macroF1, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val-microF1', microF1, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return {'loss': loss}
+
+    # def test_step(self, test_batch, batch_idx):
+    #     lX, ly = test_batch
+    #     logits = self.forward(lX)
+    #     _ly = []
+    #     for lang in sorted(lX.keys()):
+    #         _ly.append(ly[lang])
+    #     ly = torch.cat(_ly, dim=0)
+    #     predictions = torch.sigmoid(logits) > 0.5
+    #     accuracy = self.accuracy(predictions, ly)
+    #     microF1 = self.microF1_te(predictions, ly)
+    #     macroF1 = self.macroF1_te(predictions, ly)
+    #     self.log('test-accuracy', accuracy,  on_step=False, on_epoch=True, prog_bar=False, logger=True)
+    #     self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
+    #     self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
+    #     return
 
     def configure_optimizers(self, lr=3e-5, weight_decay=0.01):
         no_decay = ['bias', 'LayerNorm.weight']

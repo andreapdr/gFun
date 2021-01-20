@@ -231,9 +231,10 @@ class RecurrentGen(ViewGen):
 
 class BertGen(ViewGen):
 
-    def __init__(self, multilingualIndex, batch_size=128, gpus=0, n_jobs=-1, stored_path=None):
+    def __init__(self, multilingualIndex, batch_size=128, nepochs=50, gpus=0, n_jobs=-1, stored_path=None):
         super().__init__()
         self.multilingualIndex = multilingualIndex
+        self.nepochs = nepochs
         self.gpus = gpus
         self.batch_size = batch_size
         self.n_jobs = n_jobs
@@ -244,11 +245,12 @@ class BertGen(ViewGen):
 
     def _init_model(self):
         output_size = self.multilingualIndex.get_target_dim()
-        return BertModel(output_size=output_size, stored_path=self.stored_path)
+        return BertModel(output_size=output_size, stored_path=self.stored_path, gpus=self.gpus)
 
     def fit(self, lX, ly):
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
-        trainer = Trainer(default_root_dir='checkpoints/bert/', gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger)
+        trainer = Trainer(default_root_dir='checkpoints/bert/', gradient_clip_val=1e-1, max_epochs=self.nepochs,
+                          gpus=self.gpus, logger=self.logger, checkpoint_callback=False)
         trainer.fit(self.model, bertDataModule)
         # trainer.test(self.model, bertDataModule)
         pass

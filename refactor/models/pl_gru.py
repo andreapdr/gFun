@@ -1,17 +1,18 @@
 # Lightning modules, see https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html
 import torch
 from torch import nn
-from transformers import AdamW
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.optim.lr_scheduler import StepLR
+from transformers import AdamW
 import pytorch_lightning as pl
 from pytorch_lightning.metrics import F1, Accuracy
-from torch.optim.lr_scheduler import StepLR
 from models.helpers import init_embeddings
 from util.pl_metrics import CustomF1
 from util.evaluation import evaluate
 
 # TODO: it should also be possible to compute metrics independently for each language!
+
 
 class RecurrentModel(pl.LightningModule):
     """

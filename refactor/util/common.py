@@ -171,7 +171,7 @@ class MultilingualIndex:
 
     def l_test_raw(self):
         print('TODO: implement MultilingualIndex method to return RAW test data!')
-        return NotImplementedError
+        return {l: index.test_raw for l, index in self.l_index.items()}
 
     def l_devel_index(self):
         return {l: index.devel_index for l, index in self.l_index.items()}

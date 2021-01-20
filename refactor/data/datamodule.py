@@ -105,18 +105,16 @@ class RecurrentDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
             l_train_index, l_train_target = self.multilingualIndex.l_train()
-
+            # Debug settings: reducing number of samples
             # l_train_index = {l: train[:50] for l, train in l_train_index.items()}
             # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
-
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
 
             l_val_index, l_val_target = self.multilingualIndex.l_val()
-
+            # Debug settings: reducing number of samples
             # l_val_index = {l: train[:50] for l, train in l_val_index.items()}
             # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
-
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
         if stage == 'test' or stage is None:
@@ -145,14 +143,21 @@ class BertDataModule(RecurrentDataModule):
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
             l_train_raw, l_train_target = self.multilingualIndex.l_train_raw()
+            # Debug settings: reducing number of samples
+            # l_train_raw = {l: train[:50] for l, train in l_train_raw.items()}
+            # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
             l_train_index = self.tokenize(l_train_raw, max_len=self.max_len)
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
+
             l_val_raw, l_val_target = self.multilingualIndex.l_val_raw()
+            # Debug settings: reducing number of samples
+            # l_val_raw = {l: train[:50] for l, train in l_val_raw.items()}
+            # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
             l_val_index = self.tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
-        # TODO
+
         if stage == 'test' or stage is None:
             l_test_raw, l_test_target = self.multilingualIndex.l_test_raw()
             l_test_index = self.tokenize(l_val_raw, max_len=self.max_len)
