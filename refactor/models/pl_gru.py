@@ -69,8 +69,9 @@ class RecurrentModel(pl.LightningModule):
         self.linear2 = nn.Linear(ff1, ff2)
         self.label = nn.Linear(ff2, self.output_size)
 
-        lPretrained = None  # TODO: setting lPretrained to None, letting it to its original value will bug first
-        #  validation step (i.e., checkpoint will store also its ++ value, I guess, making the saving process too slow)
+        # TODO: setting lPretrained to None, letting it to its original value will bug first validation
+        #  step (i.e., checkpoint will store also its ++ value, I guess, making the saving process too slow)
+        lPretrained = None
         self.save_hyperparameters()
 
     def forward(self, lX):
