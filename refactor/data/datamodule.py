@@ -88,7 +88,7 @@ class RecurrentDataset(Dataset):
         return index_list
 
 
-class GfunDataModule(pl.LightningDataModule):
+class RecurrentDataModule(pl.LightningDataModule):
     def __init__(self, multilingualIndex, batchsize=64):
         """
         Pytorch-lightning DataModule: https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
@@ -105,9 +105,18 @@ class GfunDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
             l_train_index, l_train_target = self.multilingualIndex.l_train()
+
+            # l_train_index = {l: train[:50] for l, train in l_train_index.items()}
+            # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
+
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
+
             l_val_index, l_val_target = self.multilingualIndex.l_val()
+
+            # l_val_index = {l: train[:50] for l, train in l_val_index.items()}
+            # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
+
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
         if stage == 'test' or stage is None:
@@ -128,7 +137,7 @@ class GfunDataModule(pl.LightningDataModule):
                           collate_fn=self.test_dataset.collate_fn)
 
 
-class BertDataModule(GfunDataModule):
+class BertDataModule(RecurrentDataModule):
     def __init__(self, multilingualIndex, batchsize=64, max_len=512):
         super().__init__(multilingualIndex, batchsize)
         self.max_len = max_len

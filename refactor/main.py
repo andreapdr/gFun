@@ -15,7 +15,7 @@ def main(args):
     _DATASET = '/home/moreo/CLESA/rcv2/rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle'
     EMBEDDINGS_PATH = '/home/andreapdr/gfun/embeddings'
     data = MultilingualDataset.load(_DATASET)
-    data.set_view(languages=['it'], categories=[0,1])
+    data.set_view(languages=['it'], categories=[0, 1])
     lX, ly = data.training()
     lXte, lyte = data.test()
 
@@ -28,7 +28,8 @@ def main(args):
     # gFun = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
     # gFun = MuseGen(muse_dir='/home/andreapdr/funneling_pdr/embeddings', n_jobs=N_JOBS)
     # gFun = WordClassGen(n_jobs=N_JOBS)
-    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=512, gpus=args.gpus, n_jobs=N_JOBS)
+    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=5, nepochs=100,
+                        gpus=args.gpus, n_jobs=N_JOBS)
     # gFun = BertGen(multilingualIndex, gpus=args.gpus, batch_size=128, n_jobs=N_JOBS)
 
     gFun.fit(lX, ly)

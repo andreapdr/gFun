@@ -327,3 +327,12 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
         # pbar.set_description(f'[unk = {unk_count}/{knw_count}={(100.*unk_count/knw_count):.2f}%]'
         #                      f'[out = {out_count}/{knw_count}={(100.*out_count/knw_count):.2f}%]')
     return indexes
+
+
+def is_true(tensor, device):
+    return torch.where(tensor == 1, torch.Tensor([1]).to(device), torch.Tensor([0]).to(device))
+
+
+def is_false(tensor, device):
+    return torch.where(tensor == 0, torch.Tensor([1]).to(device), torch.Tensor([0]).to(device))
+

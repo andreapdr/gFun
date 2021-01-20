@@ -22,7 +22,7 @@ from models.pl_gru import RecurrentModel
 from models.pl_bert import BertModel
 from models.lstm_class import RNNMultilingualClassifier
 from pytorch_lightning import Trainer
-from data.datamodule import GfunDataModule, BertDataModule
+from data.datamodule import RecurrentDataModule, BertDataModule
 from pytorch_lightning.loggers import TensorBoardLogger
 import torch
 
@@ -144,7 +144,8 @@ class RecurrentGen(ViewGen):
     # TODO: save model https://forums.pytorchlightning.ai/t/how-to-save-hparams-when-not-provided-as-argument-apparently-assigning-to-hparams-is-not-recomended/339/5
     #  Problem: we are passing lPretrained to init the RecurrentModel -> incredible slow at saving (checkpoint).
     #  if we do not save it is impossible to init RecurrentModel by calling RecurrentModel.load_from_checkpoint()
-    def __init__(self, multilingualIndex, pretrained_embeddings, wce, batch_size=512, gpus=0, n_jobs=-1, stored_path=None):
+    def __init__(self, multilingualIndex, pretrained_embeddings, wce, batch_size=512, nepochs=50,
+                 gpus=0, n_jobs=-1, stored_path=None):
         """
         generates document embedding by means of a Gated Recurrent Units. The model can be
         initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,).
@@ -162,6 +163,7 @@ class RecurrentGen(ViewGen):
         self.gpus = gpus
         self.n_jobs = n_jobs
         self.stored_path = stored_path
+        self.nepochs = nepochs
 
         # EMBEDDINGS to be deployed
         self.pretrained = pretrained_embeddings
@@ -193,7 +195,8 @@ class RecurrentGen(ViewGen):
                 lVocab_size=lvocab_size,
                 learnable_length=learnable_length,
                 drop_embedding_range=self.multilingualIndex.sup_range,
-                drop_embedding_prop=0.5
+                drop_embedding_prop=0.5,
+                gpus=self.gpus
             )
 
     def fit(self, lX, ly):
@@ -204,8 +207,9 @@ class RecurrentGen(ViewGen):
         :param ly:
         :return:
         """
-        recurrentDataModule = GfunDataModule(self.multilingualIndex, batchsize=self.batch_size)
-        trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=50, checkpoint_callback=False)
+        recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size)
+        trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=self.nepochs,
+                          checkpoint_callback=False)
 
         # vanilla_torch_model = torch.load(
         #     '/home/andreapdr/funneling_pdr/checkpoint/gru_viewgen_-jrc_doclist_1958-2005vs2006_all_top300_noparallel_processed_run0.pickle')
