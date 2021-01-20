@@ -11,6 +11,7 @@ from models.helpers import init_embeddings
 from util.pl_metrics import CustomF1
 from util.evaluation import evaluate
 
+# TODO: it should also be possible to compute metrics independently for each language!
 
 class RecurrentModel(pl.LightningModule):
     """
