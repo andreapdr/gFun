@@ -108,6 +108,7 @@ class RecurrentDataModule(pl.LightningDataModule):
             # Debug settings: reducing number of samples
             # l_train_index = {l: train[:50] for l, train in l_train_index.items()}
             # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
+
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
 
@@ -115,6 +116,7 @@ class RecurrentDataModule(pl.LightningDataModule):
             # Debug settings: reducing number of samples
             # l_val_index = {l: train[:50] for l, train in l_val_index.items()}
             # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
+
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
         if stage == 'test' or stage is None:
@@ -146,6 +148,7 @@ class BertDataModule(RecurrentDataModule):
             # Debug settings: reducing number of samples
             # l_train_raw = {l: train[:50] for l, train in l_train_raw.items()}
             # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
+
             l_train_index = self.tokenize(l_train_raw, max_len=self.max_len)
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
@@ -154,6 +157,7 @@ class BertDataModule(RecurrentDataModule):
             # Debug settings: reducing number of samples
             # l_val_raw = {l: train[:50] for l, train in l_val_raw.items()}
             # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
+
             l_val_index = self.tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())

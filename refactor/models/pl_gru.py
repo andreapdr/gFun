@@ -6,21 +6,25 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
 from transformers import AdamW
 import pytorch_lightning as pl
-from pytorch_lightning.metrics import Accuracy
 from models.helpers import init_embeddings
 from util.pl_metrics import CustomF1, CustomK
-from util.evaluation import evaluate
-
-# TODO: it should also be possible to compute metrics independently for each language!
 
 
 class RecurrentModel(pl.LightningModule):
-    """
-    Check out for logging insight https://www.learnopencv.com/tensorboard-with-pytorch-lightning/
-    """
-
     def __init__(self, lPretrained, langs, output_size, hidden_size, lVocab_size, learnable_length,
                  drop_embedding_range, drop_embedding_prop, gpus=None):
+        """
+
+        :param lPretrained:
+        :param langs:
+        :param output_size:
+        :param hidden_size:
+        :param lVocab_size:
+        :param learnable_length:
+        :param drop_embedding_range:
+        :param drop_embedding_prop:
+        :param gpus:
+        """
         super().__init__()
         self.gpus = gpus
         self.langs = langs
@@ -32,11 +36,16 @@ class RecurrentModel(pl.LightningModule):
         self.drop_embedding_prop = drop_embedding_prop
         self.loss = torch.nn.BCEWithLogitsLoss()
 
-        self.accuracy = Accuracy()
         self.microF1 = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
         self.macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
         self.microK = CustomK(num_classes=output_size, average='micro', device=self.gpus)
         self.macroK = CustomK(num_classes=output_size, average='macro', device=self.gpus)
+        # Language specific metrics - I am not really sure if they should be initialized
+        # independently or we can use the metrics init above... # TODO: check it
+        self.lang_macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.lang_microF1 = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
+        self.lang_macroK = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.lang_microK = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
 
         self.lPretrained_embeddings = nn.ModuleDict()
         self.lLearnable_embeddings = nn.ModuleDict()
@@ -103,22 +112,60 @@ class RecurrentModel(pl.LightningModule):
         _ly = []
         for lang in sorted(lX.keys()):
             _ly.append(ly[lang])
-        ly = torch.cat(_ly, dim=0)
-        loss = self.loss(logits, ly)
+        y = torch.cat(_ly, dim=0)
+        loss = self.loss(logits, y)
         # Squashing logits through Sigmoid in order to get confidence score
         predictions = torch.sigmoid(logits) > 0.5
-        accuracy = self.accuracy(predictions, ly)
-        microF1 = self.microF1(predictions, ly)
-        macroF1 = self.macroF1(predictions, ly)
-        microK = self.microK(predictions, ly)
-        macroK = self.macroK(predictions, ly)
+        microF1 = self.microF1(predictions, y)
+        macroF1 = self.macroF1(predictions, y)
+        microK = self.microK(predictions, y)
+        macroK = self.macroK(predictions, y)
         self.log('train-loss', loss,         on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        self.log('train-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-macroF1', macroF1,   on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-microF1', microF1,   on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-macroK', macroK,     on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-microK', microK,     on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        return {'loss': loss}
+        re_lX = self._reconstruct_dict(predictions, ly)
+        return {'loss': loss, 'pred': re_lX, 'target': ly}
+
+    def _reconstruct_dict(self, X, ly):
+        reconstructed = {}
+        _start = 0
+        for lang in sorted(ly.keys()):
+            lang_batchsize = len(ly[lang])
+            reconstructed[lang] = X[_start:_start+lang_batchsize]
+            _start += lang_batchsize
+        return reconstructed
+    
+    def training_epoch_end(self, outputs):
+        # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
+        # here we save epoch level metric values and compute them specifically for each language
+        res_macroF1 = {lang: [] for lang in self.langs}
+        res_microF1 = {lang: [] for lang in self.langs}
+        res_macroK = {lang: [] for lang in self.langs}
+        res_microK = {lang: [] for lang in self.langs}
+        for output in outputs:
+            lX, ly = output['pred'], output['target']
+            for lang in lX.keys():
+                X, y = lX[lang], ly[lang]
+                lang_macroF1 = self.lang_macroF1(X, y)
+                lang_microF1 = self.lang_microF1(X, y)
+                lang_macroK = self.lang_macroK(X, y)
+                lang_microK = self.lang_microK(X, y)
+
+                res_macroF1[lang].append(lang_macroF1)
+                res_microF1[lang].append(lang_microF1)
+                res_macroK[lang].append(lang_macroK)
+                res_microK[lang].append(lang_microK)
+        for lang in self.langs:
+            avg_macroF1 = torch.mean(torch.Tensor(res_macroF1[lang]))
+            avg_microF1 = torch.mean(torch.Tensor(res_microF1[lang]))
+            avg_macroK = torch.mean(torch.Tensor(res_macroK[lang]))
+            avg_microK = torch.mean(torch.Tensor(res_microK[lang]))
+            self.logger.experiment.add_scalars('train-langs-macroF1', {f'{lang}': avg_macroF1}, self.current_epoch)
+            self.logger.experiment.add_scalars('train-langs-microF1', {f'{lang}': avg_microF1}, self.current_epoch)
+            self.logger.experiment.add_scalars('train-langs-macroK', {f'{lang}': avg_macroK}, self.current_epoch)
+            self.logger.experiment.add_scalars('train-langs-microK', {f'{lang}': avg_microK}, self.current_epoch)
 
     def validation_step(self, val_batch, batch_idx):
         lX, ly = val_batch
@@ -129,13 +176,11 @@ class RecurrentModel(pl.LightningModule):
         ly = torch.cat(_ly, dim=0)
         loss = self.loss(logits, ly)
         predictions = torch.sigmoid(logits) > 0.5
-        accuracy = self.accuracy(predictions, ly)
         microF1 = self.microF1(predictions, ly)
         macroF1 = self.macroF1(predictions, ly)
         microK = self.microK(predictions, ly)
         macroK = self.macroK(predictions, ly)
         self.log('val-loss', loss,         on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log('val-accuracy', accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('val-macroF1', macroF1,   on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('val-microF1', microF1,   on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('val-macroK', macroK,     on_step=False, on_epoch=True, prog_bar=True, logger=True)
@@ -150,12 +195,10 @@ class RecurrentModel(pl.LightningModule):
             _ly.append(ly[lang])
         ly = torch.cat(_ly, dim=0)
         predictions = torch.sigmoid(logits) > 0.5
-        accuracy = self.accuracy(predictions, ly)
         microF1 = self.microF1(predictions, ly)
         macroF1 = self.macroF1(predictions, ly)
-        self.log('test-accuracy', accuracy,  on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=False)
+        self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=False)
         return
 
     def embed(self, X, lang):

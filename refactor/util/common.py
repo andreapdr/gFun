@@ -41,7 +41,7 @@ def _normalize(lX, l2=True):
 
 
 def none_dict(langs):
-    return {l:None for l in langs}
+    return {l: None for l in langs}
 
 
 class MultilingualIndex:
@@ -62,12 +62,13 @@ class MultilingualIndex:
 
         for lang in self.langs:
             # Init monolingual Index
-            self.l_index[lang] = Index(l_devel_raw[lang], l_devel_target[lang], l_test_raw[lang], l_test_target[lang], lang)
+            self.l_index[lang] = Index(l_devel_raw[lang], l_devel_target[lang], l_test_raw[lang], l_test_target[lang],
+                                       lang)
             # call to index() function of monolingual Index
             self.l_index[lang].index(l_pretrained_vocabulary[lang], l_analyzer[lang], l_vocabulary[lang])
 
     def train_val_split(self, val_prop=0.2, max_val=2000, seed=42):
-        for l,index in self.l_index.items():
+        for l, index in self.l_index.items():
             index.train_val_split(val_prop, max_val, seed=seed)
 
     def embedding_matrices(self, lpretrained, supervised):
@@ -97,7 +98,7 @@ class MultilingualIndex:
         return wordlist
 
     def get_raw_lXtr(self):
-        lXtr_raw = {k:[] for k in self.langs}
+        lXtr_raw = {k: [] for k in self.langs}
         lYtr_raw = {k: [] for k in self.langs}
         for lang in self.langs:
             lXtr_raw[lang] = self.l_index[lang].train_raw
@@ -137,10 +138,10 @@ class MultilingualIndex:
         return self.l_index[self.langs[0]].devel_target.shape[1]
 
     def l_vocabsize(self):
-        return {l:index.vocabsize for l,index in self.l_index.items()}
+        return {l: index.vocabsize for l, index in self.l_index.items()}
 
     def l_embeddings(self):
-        return {l:index.embedding_matrix for l,index in self.l_index.items()}
+        return {l: index.embedding_matrix for l, index in self.l_index.items()}
 
     def l_pad(self):
         return {l: index.pad_index for l, index in self.l_index.items()}
@@ -227,8 +228,10 @@ class Index:
 
         # index documents and keep track of test terms outside the development vocabulary that are in Muse (if available)
         self.out_of_vocabulary = dict()
-        self.devel_index = index(self.devel_raw, self.word2index, known_words, analyzer, self.unk_index, self.out_of_vocabulary)
-        self.test_index = index(self.test_raw, self.word2index, known_words, analyzer, self.unk_index, self.out_of_vocabulary)
+        self.devel_index = index(self.devel_raw, self.word2index, known_words, analyzer, self.unk_index,
+                                 self.out_of_vocabulary)
+        self.test_index = index(self.test_raw, self.word2index, known_words, analyzer, self.unk_index,
+                                self.out_of_vocabulary)
 
         self.vocabsize = len(self.word2index) + len(self.out_of_vocabulary)
 
@@ -248,7 +251,8 @@ class Index:
             train_test_split(
                 devel, target, devel_raw, test_size=val_size, random_state=seed, shuffle=True)
 
-        print(f'split lang {self.lang}: train={len(self.train_index)} val={len(self.val_index)} test={len(self.test_index)}')
+        print(
+            f'split lang {self.lang}: train={len(self.train_index)} val={len(self.val_index)} test={len(self.test_index)}')
 
     def get_word_list(self):
         def extract_word_list(word2index):
@@ -300,7 +304,7 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
     are not in the original vocab but that are in the known_words
     :return:
     """
-    indexes=[]
+    indexes = []
     vocabsize = len(vocab)
     unk_count = 0
     knw_count = 0
@@ -315,7 +319,7 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
             else:
                 if word in known_words:
                     if word not in out_of_vocabulary:
-                        out_of_vocabulary[word] = vocabsize+len(out_of_vocabulary)
+                        out_of_vocabulary[word] = vocabsize + len(out_of_vocabulary)
                     idx = out_of_vocabulary[word]
                     out_count += 1
                 else:
@@ -335,4 +339,3 @@ def is_true(tensor, device):
 
 def is_false(tensor, device):
     return torch.where(tensor == 0, torch.Tensor([1]).to(device), torch.Tensor([0]).to(device))
-
