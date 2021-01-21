@@ -6,9 +6,9 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
 from transformers import AdamW
 import pytorch_lightning as pl
-from pytorch_lightning.metrics import F1, Accuracy
+from pytorch_lightning.metrics import Accuracy
 from models.helpers import init_embeddings
-from util.pl_metrics import CustomF1
+from util.pl_metrics import CustomF1, CustomK
 from util.evaluation import evaluate
 
 # TODO: it should also be possible to compute metrics independently for each language!
@@ -33,12 +33,10 @@ class RecurrentModel(pl.LightningModule):
         self.loss = torch.nn.BCEWithLogitsLoss()
 
         self.accuracy = Accuracy()
-        self.microF1_tr = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
-        self.macroF1_tr = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
-        self.microF1_va = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
-        self.macroF1_va = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
-        self.microF1_te = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
-        self.macroF1_te = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.microF1 = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
+        self.macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
+        self.microK = CustomK(num_classes=output_size, average='micro', device=self.gpus)
+        self.macroK = CustomK(num_classes=output_size, average='macro', device=self.gpus)
 
         self.lPretrained_embeddings = nn.ModuleDict()
         self.lLearnable_embeddings = nn.ModuleDict()
@@ -110,12 +108,16 @@ class RecurrentModel(pl.LightningModule):
         # Squashing logits through Sigmoid in order to get confidence score
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, ly)
-        microF1 = self.microF1_tr(predictions, ly)
-        macroF1 = self.macroF1_tr(predictions, ly)
+        microF1 = self.microF1(predictions, ly)
+        macroF1 = self.macroF1(predictions, ly)
+        microK = self.microK(predictions, ly)
+        macroK = self.macroK(predictions, ly)
         self.log('train-loss', loss,         on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-macroF1', macroF1,   on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('train-microF1', microF1,   on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train-macroK', macroK,     on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train-microK', microK,     on_step=True, on_epoch=True, prog_bar=False, logger=True)
         return {'loss': loss}
 
     def validation_step(self, val_batch, batch_idx):
@@ -128,12 +130,16 @@ class RecurrentModel(pl.LightningModule):
         loss = self.loss(logits, ly)
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, ly)
-        microF1 = self.microF1_va(predictions, ly)
-        macroF1 = self.macroF1_va(predictions, ly)
-        self.log('val-loss', loss,         on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        self.log('val-accuracy', accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        microF1 = self.microF1(predictions, ly)
+        macroF1 = self.macroF1(predictions, ly)
+        microK = self.microK(predictions, ly)
+        macroK = self.macroK(predictions, ly)
+        self.log('val-loss', loss,         on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('val-accuracy', accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('val-macroF1', macroF1,   on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('val-microF1', microF1,   on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val-macroK', macroK,     on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val-microK', microK,     on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return {'loss': loss}
 
     def test_step(self, test_batch, batch_idx):
@@ -145,8 +151,8 @@ class RecurrentModel(pl.LightningModule):
         ly = torch.cat(_ly, dim=0)
         predictions = torch.sigmoid(logits) > 0.5
         accuracy = self.accuracy(predictions, ly)
-        microF1 = self.microF1_te(predictions, ly)
-        macroF1 = self.macroF1_te(predictions, ly)
+        microF1 = self.microF1(predictions, ly)
+        macroF1 = self.macroF1(predictions, ly)
         self.log('test-accuracy', accuracy,  on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)

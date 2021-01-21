@@ -28,9 +28,9 @@ def main(args):
     # gFun = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
     # gFun = MuseGen(muse_dir='/home/andreapdr/funneling_pdr/embeddings', n_jobs=N_JOBS)
     # gFun = WordClassGen(n_jobs=N_JOBS)
-    # gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=True, batch_size=128,
-    #                     nepochs=100, gpus=args.gpus, n_jobs=N_JOBS)
-    gFun = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=N_JOBS)
+    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=True, batch_size=128,
+                        nepochs=100, gpus=args.gpus, n_jobs=N_JOBS)
+    # gFun = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=N_JOBS)
 
     gFun.fit(lX, ly)
 
