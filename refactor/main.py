@@ -16,7 +16,7 @@ def main(args):
     _DATASET = '/home/moreo/CLESA/rcv2/rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle'
     EMBEDDINGS_PATH = '/home/andreapdr/gfun/embeddings'
     data = MultilingualDataset.load(_DATASET)
-    # data.set_view(languages=['it', 'fr'])
+    data.set_view(languages=['it', 'fr'])
     lX, ly = data.training()
     lXte, lyte = data.test()
 

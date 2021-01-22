@@ -126,7 +126,7 @@ class RecurrentModel(pl.LightningModule):
                         batch = lX[lang][i:i+batch_size]
                     max_pad_len = define_pad_length(batch)
                     batch = pad(batch, pad_index=l_pad[lang], max_pad_length=max_pad_len)
-                    X = torch.LongTensor(batch)
+                    X = torch.LongTensor(batch).to('cuda' if self.gpus else 'cpu')
                     _batch_size = X.shape[0]
                     X = self.embed(X, lang)
                     X = self.embedding_dropout(X, drop_range=self.drop_embedding_range, p_drop=self.drop_embedding_prop,

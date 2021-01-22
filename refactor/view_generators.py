@@ -229,6 +229,7 @@ class RecurrentGen(ViewGen):
         l_pad = self.multilingualIndex.l_pad()
         data = self.multilingualIndex.l_devel_index()
         # trainer = Trainer(gpus=self.gpus)
+        self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
         time_init = time()
         l_embeds = self.model.encode(data, l_pad, batch_size=256)
