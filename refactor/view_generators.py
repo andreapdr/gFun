@@ -20,11 +20,10 @@ from util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 from util.common import TfidfVectorizerMultilingual, _normalize
 from models.pl_gru import RecurrentModel
 from models.pl_bert import BertModel
-from models.lstm_class import RNNMultilingualClassifier
 from pytorch_lightning import Trainer
 from data.datamodule import RecurrentDataModule, BertDataModule
-from pytorch_lightning.loggers import TensorBoardLogger
-import torch
+from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
+from time import time
 
 
 class ViewGen(ABC):
@@ -172,9 +171,8 @@ class RecurrentGen(ViewGen):
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         self.multilingualIndex.embedding_matrices(self.pretrained, supervised=self.wce)
         self.model = self._init_model()
-        # hp_tuning with Tensorboard: check https://www.tensorflow.org/tensorboard/hyperparameter_tuning_with_hparams
-        # however, setting it to False at the moment!
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='gfun_rnn_dev', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn_dev', default_hp_metric=False)
+        # self.logger = CSVLogger(save_dir='csv_logs', name='rnn_dev')
 
     def _init_model(self):
         if self.stored_path:
@@ -201,7 +199,7 @@ class RecurrentGen(ViewGen):
 
     def fit(self, lX, ly):
         """
-        lX and ly are not directly used. We rather get them from the multilingual index used in the instatiation
+        lX and ly are not directly used. We rather get them from the multilingual index used in the instantiation
         of the Dataset object (RecurrentDataset) in the GfunDataModule class.
         :param lX:
         :param ly:
@@ -223,7 +221,20 @@ class RecurrentGen(ViewGen):
         return self
 
     def transform(self, lX):
-        pass
+        """
+        Project documents to the common latent space
+        :param lX:
+        :return:
+        """
+        l_pad = self.multilingualIndex.l_pad()
+        data = self.multilingualIndex.l_devel_index()
+        # trainer = Trainer(gpus=self.gpus)
+        # self.model.eval()
+        time_init = time()
+        l_embeds = self.model.encode(data, l_pad, batch_size=256)
+        transform_time = round(time() - time_init, 3)
+        print(f'Executed! Transform took: {transform_time}')
+        return l_embeds
 
     def fit_transform(self, lX, ly):
         pass
@@ -239,26 +250,28 @@ class BertGen(ViewGen):
         self.batch_size = batch_size
         self.n_jobs = n_jobs
         self.stored_path = stored_path
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert_dev', default_hp_metric=False)
         self.model = self._init_model()
-        self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert_dev', default_hp_metric=False)
 
     def _init_model(self):
         output_size = self.multilingualIndex.get_target_dim()
         return BertModel(output_size=output_size, stored_path=self.stored_path, gpus=self.gpus)
 
     def fit(self, lX, ly):
+        self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
-        trainer = Trainer(default_root_dir='checkpoints/bert/', gradient_clip_val=1e-1, max_epochs=self.nepochs,
-                          gpus=self.gpus, logger=self.logger, checkpoint_callback=False)
-        trainer.fit(self.model, bertDataModule)
-        # trainer.test(self.model, bertDataModule)
-        pass
+        trainer = Trainer(gradient_clip_val=1e-1, max_epochs=self.nepochs, gpus=self.gpus,
+                          logger=self.logger, checkpoint_callback=False)
+        trainer.fit(self.model, datamodule=bertDataModule)
+        trainer.test(self.model, datamodule=bertDataModule)
+        return self
 
     def transform(self, lX):
+        # lX is raw text data. It has to be first indexed via multilingualIndex Vectorizer.
         pass
 
     def fit_transform(self, lX, ly):
+        # we can assume that we have already indexed data for transform() since we are first calling fit()
         pass
 
 

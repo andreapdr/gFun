@@ -8,6 +8,7 @@ from transformers import AdamW
 import pytorch_lightning as pl
 from models.helpers import init_embeddings
 from util.pl_metrics import CustomF1, CustomK
+from util.common import define_pad_length, pad
 
 
 class RecurrentModel(pl.LightningModule):
@@ -78,17 +79,17 @@ class RecurrentModel(pl.LightningModule):
         self.linear2 = nn.Linear(ff1, ff2)
         self.label = nn.Linear(ff2, self.output_size)
 
-        # TODO: setting lPretrained to None, letting it to its original value will bug first validation
+        # TODO: setting lPretrained to None, letting it to its original value will "bug" first validation
         #  step (i.e., checkpoint will store also its ++ value, I guess, making the saving process too slow)
         lPretrained = None
         self.save_hyperparameters()
 
     def forward(self, lX):
-        _tmp = []
+        l_embed = []
         for lang in sorted(lX.keys()):
             doc_embedding = self.transform(lX[lang], lang)
-            _tmp.append(doc_embedding)
-        embed = torch.cat(_tmp, dim=0)
+            l_embed.append(doc_embedding)
+        embed = torch.cat(l_embed, dim=0)
         logits = self.label(embed)
         return logits
 
@@ -105,6 +106,37 @@ class RecurrentModel(pl.LightningModule):
         output = self.dropout(F.relu(self.linear1(output)))
         output = self.dropout(F.relu(self.linear2(output)))
         return output
+
+    def encode(self, lX, l_pad, batch_size=128):
+        """
+        Returns encoded data (i.e, RNN hidden state at second feed-forward layer - linear1). Dimensionality is 512.
+        :param lX:
+        :return:
+        """
+        l_embed = {lang: [] for lang in lX.keys()}
+        for lang in sorted(lX.keys()):
+            for i in range(0, len(lX[lang]), batch_size):
+                if i+batch_size > len(lX[lang]):
+                    batch = lX[lang][i:len(lX[lang])]
+                else:
+                    batch = lX[lang][i:i+batch_size]
+                max_pad_len = define_pad_length(batch)
+                batch = pad(batch, pad_index=l_pad[lang], max_pad_length=max_pad_len)
+                X = torch.LongTensor(batch)
+                _batch_size = X.shape[0]
+                X = self.embed(X, lang)
+                X = self.embedding_dropout(X, drop_range=self.drop_embedding_range, p_drop=self.drop_embedding_prop,
+                                           training=self.training)
+                X = X.permute(1, 0, 2)
+                h_0 = Variable(torch.zeros(self.n_layers * self.n_directions, _batch_size, self.hidden_size).to(self.device))
+                output, _ = self.rnn(X, h_0)
+                output = output[-1, :, :]
+                output = F.relu(self.linear0(output))
+                output = self.dropout(F.relu(self.linear1(output)))
+                l_embed[lang].append(output)
+        for k, v in l_embed.items():
+            l_embed[k] = torch.cat(v, dim=0)
+        return l_embed
 
     def training_step(self, train_batch, batch_idx):
         lX, ly = train_batch
@@ -140,6 +172,7 @@ class RecurrentModel(pl.LightningModule):
     def training_epoch_end(self, outputs):
         # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
         # here we save epoch level metric values and compute them specifically for each language
+        # TODO: this is horrible...
         res_macroF1 = {lang: [] for lang in self.langs}
         res_microF1 = {lang: [] for lang in self.langs}
         res_macroK = {lang: [] for lang in self.langs}
@@ -197,8 +230,12 @@ class RecurrentModel(pl.LightningModule):
         predictions = torch.sigmoid(logits) > 0.5
         microF1 = self.microF1(predictions, ly)
         macroF1 = self.macroF1(predictions, ly)
-        self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=False)
-        self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=False)
+        microK = self.microK(predictions, ly)
+        macroK = self.macroK(predictions, ly)
+        self.log('test-macroF1', macroF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('test-microF1', microF1,    on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('test-macroK', macroK,      on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test-microK', microK,      on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return
 
     def embed(self, X, lang):

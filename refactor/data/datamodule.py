@@ -65,9 +65,8 @@ class RecurrentDataset(Dataset):
                 ly_batch[current_lang].append(d[1])
 
         for lang in lX_batch.keys():
-            # TODO: double check padding function (too many left pad tokens?)
-            lX_batch[lang] = self.pad(lX_batch[lang], pad_index=self.lPad_index[lang], max_pad_length=70)
-                                      # max_pad_length=self.define_pad_length(lX_batch[lang]))
+            lX_batch[lang] = self.pad(lX_batch[lang], pad_index=self.lPad_index[lang],
+                                      max_pad_length=self.define_pad_length(lX_batch[lang]))
             lX_batch[lang] = torch.LongTensor(lX_batch[lang])
             ly_batch[lang] = torch.FloatTensor(ly_batch[lang])
 

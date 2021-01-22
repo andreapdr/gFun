@@ -3,6 +3,7 @@ from util.embeddings_manager import MuseLoader
 from view_generators import RecurrentGen, BertGen
 from data.dataset_builder import MultilingualDataset
 from util.common import MultilingualIndex
+from time import time
 
 
 def main(args):
@@ -21,23 +22,23 @@ def main(args):
 
     # Init multilingualIndex - mandatory when deploying Neural View Generators...
     multilingualIndex = MultilingualIndex()
-    # lMuse = MuseLoader(langs=sorted(lX.keys()), cache=)
     lMuse = MuseLoader(langs=sorted(lX.keys()), cache=EMBEDDINGS_PATH)
     multilingualIndex.index(lX, ly, lXte, lyte, l_pretrained_vocabulary=lMuse.vocabulary())
 
     # gFun = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
     # gFun = MuseGen(muse_dir='/home/andreapdr/funneling_pdr/embeddings', n_jobs=N_JOBS)
     # gFun = WordClassGen(n_jobs=N_JOBS)
-    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=128,
+    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=256,
                         nepochs=50, gpus=args.gpus, n_jobs=N_JOBS)
     # gFun = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=N_JOBS)
 
-    gFun.fit(lX, ly)
+    time_init = time()
+    # gFun.fit(lX, ly)
 
-    # print('Projecting...')
-    # y_ = gFun.transform(lX)
-
-    exit('Executed!')
+    print('Projecting...')
+    y_ = gFun.transform(lX)
+    train_time = round(time() - time_init, 3)
+    exit(f'Executed! Training time: {train_time}!')
 
 
 if __name__ == '__main__':

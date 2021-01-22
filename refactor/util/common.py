@@ -339,3 +339,17 @@ def is_true(tensor, device):
 
 def is_false(tensor, device):
     return torch.where(tensor == 0, torch.Tensor([1]).to(device), torch.Tensor([0]).to(device))
+
+
+def define_pad_length(index_list):
+    lengths = [len(index) for index in index_list]
+    return int(np.mean(lengths) + np.std(lengths))
+
+
+def pad(index_list, pad_index, max_pad_length=None):
+    pad_length = np.max([len(index) for index in index_list])
+    if max_pad_length is not None:
+        pad_length = min(pad_length, max_pad_length)
+    for i, indexes in enumerate(index_list):
+        index_list[i] = [pad_index] * (pad_length - len(indexes)) + indexes[:pad_length]
+    return index_list
