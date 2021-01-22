@@ -229,7 +229,7 @@ class RecurrentGen(ViewGen):
         l_pad = self.multilingualIndex.l_pad()
         data = self.multilingualIndex.l_devel_index()
         # trainer = Trainer(gpus=self.gpus)
-        # self.model.eval()
+        self.model.eval()
         time_init = time()
         l_embeds = self.model.encode(data, l_pad, batch_size=256)
         transform_time = round(time() - time_init, 3)

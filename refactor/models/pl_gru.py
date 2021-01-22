@@ -110,33 +110,37 @@ class RecurrentModel(pl.LightningModule):
     def encode(self, lX, l_pad, batch_size=128):
         """
         Returns encoded data (i.e, RNN hidden state at second feed-forward layer - linear1). Dimensionality is 512.
+        # TODO: does not run on gpu..
         :param lX:
+        :param l_pad:
+        :param batch_size:
         :return:
         """
-        l_embed = {lang: [] for lang in lX.keys()}
-        for lang in sorted(lX.keys()):
-            for i in range(0, len(lX[lang]), batch_size):
-                if i+batch_size > len(lX[lang]):
-                    batch = lX[lang][i:len(lX[lang])]
-                else:
-                    batch = lX[lang][i:i+batch_size]
-                max_pad_len = define_pad_length(batch)
-                batch = pad(batch, pad_index=l_pad[lang], max_pad_length=max_pad_len)
-                X = torch.LongTensor(batch)
-                _batch_size = X.shape[0]
-                X = self.embed(X, lang)
-                X = self.embedding_dropout(X, drop_range=self.drop_embedding_range, p_drop=self.drop_embedding_prop,
-                                           training=self.training)
-                X = X.permute(1, 0, 2)
-                h_0 = Variable(torch.zeros(self.n_layers * self.n_directions, _batch_size, self.hidden_size).to(self.device))
-                output, _ = self.rnn(X, h_0)
-                output = output[-1, :, :]
-                output = F.relu(self.linear0(output))
-                output = self.dropout(F.relu(self.linear1(output)))
-                l_embed[lang].append(output)
-        for k, v in l_embed.items():
-            l_embed[k] = torch.cat(v, dim=0)
-        return l_embed
+        with torch.no_grad():
+            l_embed = {lang: [] for lang in lX.keys()}
+            for lang in sorted(lX.keys()):
+                for i in range(0, len(lX[lang]), batch_size):
+                    if i+batch_size > len(lX[lang]):
+                        batch = lX[lang][i:len(lX[lang])]
+                    else:
+                        batch = lX[lang][i:i+batch_size]
+                    max_pad_len = define_pad_length(batch)
+                    batch = pad(batch, pad_index=l_pad[lang], max_pad_length=max_pad_len)
+                    X = torch.LongTensor(batch)
+                    _batch_size = X.shape[0]
+                    X = self.embed(X, lang)
+                    X = self.embedding_dropout(X, drop_range=self.drop_embedding_range, p_drop=self.drop_embedding_prop,
+                                               training=self.training)
+                    X = X.permute(1, 0, 2)
+                    h_0 = Variable(torch.zeros(self.n_layers * self.n_directions, _batch_size, self.hidden_size).to(self.device))
+                    output, _ = self.rnn(X, h_0)
+                    output = output[-1, :, :]
+                    output = F.relu(self.linear0(output))
+                    output = self.dropout(F.relu(self.linear1(output)))
+                    l_embed[lang].append(output)
+            for k, v in l_embed.items():
+                l_embed[k] = torch.cat(v, dim=0).cpu().numpy()
+            return l_embed
 
     def training_step(self, train_batch, batch_idx):
         lX, ly = train_batch
