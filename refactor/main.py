@@ -9,7 +9,7 @@ from time import time
 
 
 def main(args):
-    OPTIMC = True # TODO
+    OPTIMC = False   # TODO
     N_JOBS = 8
     print('Running refactored...')
 
@@ -20,6 +20,7 @@ def main(args):
     EMBEDDINGS_PATH = '/home/andreapdr/gfun/embeddings'
     data = MultilingualDataset.load(_DATASET)
     data.set_view(languages=['it', 'fr'])
+    data.show_dimensions()
     lX, ly = data.training()
     lXte, lyte = data.test()
 
@@ -53,8 +54,8 @@ def main(args):
     # Init DocEmbedderList
     docEmbedders = DocEmbedderList(embedder_list=embedder_list, probabilistic=True)
     meta_parameters = None if not OPTIMC else [{'C': [1, 1e3, 1e2, 1e1, 1e-1]}]
-    meta = MetaClassifier(meta_learner=get_learner(calibrate=False, kernel='rbf', C=meta_parameters),
-                          meta_parameters=get_params(optimc=True))
+    meta = MetaClassifier(meta_learner=get_learner(calibrate=False, kernel='rbf'),
+                          meta_parameters=get_params(optimc=OPTIMC))
 
     # Init Funnelling Architecture
     gfun = Funnelling(first_tier=docEmbedders, meta_classifier=meta)
@@ -71,7 +72,7 @@ def main(args):
     print('\n[Testing Generalized Funnelling]')
     time_te = time()
     ly_ = gfun.predict(lXte)
-    l_eval = evaluate(ly_true=ly, ly_pred=ly_)
+    l_eval = evaluate(ly_true=lyte, ly_pred=ly_)
     time_te = round(time() - time_te, 3)
     print(f'Testing completed in {time_te} seconds!')
 

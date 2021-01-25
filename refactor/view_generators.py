@@ -55,7 +55,7 @@ class VanillaFunGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, lY):
-        print('# Fitting VanillaFunGen...')
+        print('# Fitting VanillaFunGen (X)...')
         lX = self.vectorizer.fit_transform(lX)
         self.doc_projector.fit(lX, lY)
         return self
@@ -85,7 +85,7 @@ class MuseGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
-        print('# Fitting MuseGen...')
+        print('# Fitting MuseGen (M)...')
         self.vectorizer.fit(lX)
         self.langs = sorted(lX.keys())
         self.lMuse = MuseLoader(langs=self.langs, cache=self.muse_dir)
@@ -120,7 +120,7 @@ class WordClassGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
-        print('# Fitting WordClassGen...')
+        print('# Fitting WordClassGen (W)...')
         lX = self.vectorizer.fit_transform(lX)
         self.langs = sorted(lX.keys())
         wce = Parallel(n_jobs=self.n_jobs)(
@@ -207,7 +207,7 @@ class RecurrentGen(ViewGen):
         :param ly:
         :return:
         """
-        print('# Fitting RecurrentGen...')
+        print('# Fitting RecurrentGen (G)...')
         recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size)
         trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=self.nepochs,
                           checkpoint_callback=False)
@@ -260,7 +260,7 @@ class BertGen(ViewGen):
         return BertModel(output_size=output_size, stored_path=self.stored_path, gpus=self.gpus)
 
     def fit(self, lX, ly):
-        print('# Fitting BertGen...')
+        print('# Fitting BertGen (M)...')
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
         trainer = Trainer(gradient_clip_val=1e-1, max_epochs=self.nepochs, gpus=self.gpus,
