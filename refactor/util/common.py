@@ -361,3 +361,11 @@ def pad(index_list, pad_index, max_pad_length=None):
     for i, indexes in enumerate(index_list):
         index_list[i] = [pad_index] * (pad_length - len(indexes)) + indexes[:pad_length]
     return index_list
+
+
+def get_params(optimc=False):
+    if not optimc:
+        return None
+    c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
+    kernel = 'rbf'
+    return [{'kernel': [kernel], 'C': c_range, 'gamma':['auto']}]

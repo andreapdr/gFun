@@ -77,10 +77,9 @@ class FeatureSet2Posteriors:
 
 
 class Funnelling:
-    def __init__(self, first_tier: DocEmbedderList, n_jobs=-1):
+    def __init__(self, first_tier: DocEmbedderList, meta_classifier: MetaClassifier, n_jobs=-1):
         self.first_tier = first_tier
-        self.meta = MetaClassifier(
-            SVC(kernel='rbf', gamma='auto', probability=True, cache_size=1000, random_state=1), n_jobs=n_jobs)
+        self.meta = meta_classifier
         self.n_jobs = n_jobs
 
     def fit(self, lX, ly):
