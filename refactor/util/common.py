@@ -311,8 +311,8 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
     unk_count = 0
     knw_count = 0
     out_count = 0
-    pbar = tqdm(data, desc=f'indexing')
-    for text in pbar:
+    # pbar = tqdm(data, desc=f'indexing')
+    for text in data:
         words = analyzer(text)
         index = []
         for word in words:

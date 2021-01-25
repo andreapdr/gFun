@@ -164,15 +164,6 @@ class RecurrentModel(pl.LightningModule):
         re_lX = self._reconstruct_dict(predictions, ly)
         return {'loss': loss, 'pred': re_lX, 'target': ly}
 
-    def _reconstruct_dict(self, X, ly):
-        reconstructed = {}
-        _start = 0
-        for lang in sorted(ly.keys()):
-            lang_batchsize = len(ly[lang])
-            reconstructed[lang] = X[_start:_start+lang_batchsize]
-            _start += lang_batchsize
-        return reconstructed
-    
     def training_epoch_end(self, outputs):
         # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
         # here we save epoch level metric values and compute them specifically for each language
@@ -265,3 +256,13 @@ class RecurrentModel(pl.LightningModule):
         optimizer = AdamW(self.parameters(), lr=1e-3)
         scheduler = StepLR(optimizer, step_size=25, gamma=0.5)
         return [optimizer], [scheduler]
+
+    @staticmethod
+    def _reconstruct_dict(X, ly):
+        reconstructed = {}
+        _start = 0
+        for lang in sorted(ly.keys()):
+            lang_batchsize = len(ly[lang])
+            reconstructed[lang] = X[_start:_start+lang_batchsize]
+            _start += lang_batchsize
+        return reconstructed

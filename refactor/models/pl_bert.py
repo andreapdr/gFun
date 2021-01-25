@@ -45,7 +45,6 @@ class BertModel(pl.LightningModule):
     def training_step(self, train_batch, batch_idx):
         X, y, _, batch_langs = train_batch
         X = torch.cat(X).view([X[0].shape[0], len(X)])
-        # y = y.type(torch.cuda.FloatTensor)
         y = y.type(torch.FloatTensor)
         y = y.to('cuda' if self.gpus else 'cpu')
         logits, _ = self.forward(X)
@@ -63,18 +62,6 @@ class BertModel(pl.LightningModule):
         self.log('train-microK', microK,    on_step=True, on_epoch=True, prog_bar=False, logger=True)
         lX, ly = self._reconstruct_dict(predictions, y, batch_langs)
         return {'loss': loss, 'pred': lX, 'target': ly}
-
-    def _reconstruct_dict(self, predictions, y, batch_langs):
-        reconstructed_x = {lang: [] for lang in set(batch_langs)}
-        reconstructed_y = {lang: [] for lang in set(batch_langs)}
-        for i, pred in enumerate(predictions):
-            reconstructed_x[batch_langs[i]].append(pred)
-            reconstructed_y[batch_langs[i]].append(y[i])
-        for k, v in reconstructed_x.items():
-            reconstructed_x[k] = torch.cat(v).view(-1, predictions.shape[1])
-        for k, v in reconstructed_y.items():
-            reconstructed_y[k] = torch.cat(v).view(-1, predictions.shape[1])
-        return reconstructed_x, reconstructed_y
 
     def training_epoch_end(self, outputs):
         langs = []
@@ -114,7 +101,6 @@ class BertModel(pl.LightningModule):
     def validation_step(self, val_batch, batch_idx):
         X, y, _, batch_langs = val_batch
         X = torch.cat(X).view([X[0].shape[0], len(X)])
-        # y = y.type(torch.cuda.FloatTensor)
         y = y.type(torch.FloatTensor)
         y = y.to('cuda' if self.gpus else 'cpu')
         logits, _ = self.forward(X)
@@ -134,7 +120,6 @@ class BertModel(pl.LightningModule):
     def test_step(self, test_batch, batch_idx):
         X, y, _, batch_langs = test_batch
         X = torch.cat(X).view([X[0].shape[0], len(X)])
-        # y = y.type(torch.cuda.FloatTensor)
         y = y.type(torch.FloatTensor)
         y = y.to('cuda' if self.gpus else 'cpu')
         logits, _ = self.forward(X)
@@ -164,3 +149,16 @@ class BertModel(pl.LightningModule):
         optimizer = AdamW(optimizer_grouped_parameters, lr=lr)
         scheduler = StepLR(optimizer, step_size=25, gamma=0.1)
         return [optimizer], [scheduler]
+
+    @staticmethod
+    def _reconstruct_dict(predictions, y, batch_langs):
+        reconstructed_x = {lang: [] for lang in set(batch_langs)}
+        reconstructed_y = {lang: [] for lang in set(batch_langs)}
+        for i, pred in enumerate(predictions):
+            reconstructed_x[batch_langs[i]].append(pred)
+            reconstructed_y[batch_langs[i]].append(y[i])
+        for k, v in reconstructed_x.items():
+            reconstructed_x[k] = torch.cat(v).view(-1, predictions.shape[1])
+        for k, v in reconstructed_y.items():
+            reconstructed_y[k] = torch.cat(v).view(-1, predictions.shape[1])
+        return reconstructed_x, reconstructed_y

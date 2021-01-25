@@ -5,6 +5,7 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 from joblib import Parallel, delayed
+from util.standardizer import StandardizeTransformer
 
 
 def get_learner(calibrate=False, kernel='linear', C=1):
@@ -156,7 +157,6 @@ class MonolingualClassifier:
             self.model = GridSearchCV(self.model, param_grid=self.parameters, refit=True, cv=5, n_jobs=self.n_jobs,
                                       error_score=0, verbose=10)
 
-        # print(f'fitting: {self.model} on matrices of shape X={X.shape} Y={y.shape}')
         print(f'fitting: Mono-lingual Classifier on matrices of shape X={X.shape} Y={y.shape}')
         self.model.fit(X, y)
         if isinstance(self.model, GridSearchCV):
@@ -183,3 +183,40 @@ class MonolingualClassifier:
 
     def best_params(self):
         return self.best_params_
+
+
+class MetaClassifier:
+
+    def __init__(self, meta_learner, meta_parameters=None, n_jobs=-1, standardize_range=None):
+        self.n_jobs = n_jobs
+        self.model = MonolingualClassifier(base_learner=meta_learner, parameters=meta_parameters, n_jobs=n_jobs)
+        self.standardize_range = standardize_range
+
+    def fit(self, lZ, ly):
+        tinit = time.time()
+        Z, y = self.stack(lZ, ly)
+
+        self.standardizer = StandardizeTransformer(range=self.standardize_range)
+        Z = self.standardizer.fit_transform(Z)
+
+        print('fitting the Z-space of shape={}'.format(Z.shape))
+        self.model.fit(Z, y)
+        self.time = time.time() - tinit
+
+    def stack(self, lZ, ly=None):
+        langs = list(lZ.keys())
+        Z = np.vstack([lZ[lang] for lang in langs])
+        if ly is not None:
+            y = np.vstack([ly[lang] for lang in langs])
+            return Z, y
+        else:
+            return Z
+
+    def predict(self, lZ):
+        lZ = _joblib_transform_multiling(self.standardizer.transform, lZ, n_jobs=self.n_jobs)
+        return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
+
+    def predict_proba(self, lZ):
+        lZ = _joblib_transform_multiling(self.standardizer.transform, lZ, n_jobs=self.n_jobs)
+        return _joblib_transform_multiling(self.model.predict_proba, lZ, n_jobs=self.n_jobs)
+

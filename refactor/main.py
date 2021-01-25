@@ -1,8 +1,9 @@
 from argparse import ArgumentParser
-from util.embeddings_manager import MuseLoader
-from view_generators import RecurrentGen, BertGen
+from funnelling import *
+from view_generators import *
 from data.dataset_builder import MultilingualDataset
 from util.common import MultilingualIndex
+from util.evaluation import evaluate
 from time import time
 
 
@@ -25,21 +26,38 @@ def main(args):
     lMuse = MuseLoader(langs=sorted(lX.keys()), cache=EMBEDDINGS_PATH)
     multilingualIndex.index(lX, ly, lXte, lyte, l_pretrained_vocabulary=lMuse.vocabulary())
 
-    # gFun = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
-    # gFun = MuseGen(muse_dir='/home/andreapdr/funneling_pdr/embeddings', n_jobs=N_JOBS)
-    # gFun = WordClassGen(n_jobs=N_JOBS)
-    # gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=256,
-    #                     nepochs=50, gpus=args.gpus, n_jobs=N_JOBS)
-    gFun = BertGen(multilingualIndex, batch_size=4, nepochs=1, gpus=args.gpus, n_jobs=N_JOBS)
+    # posteriorEmbedder = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
+    museEmbedder = MuseGen(muse_dir=EMBEDDINGS_PATH, n_jobs=N_JOBS)
+    wceEmbedder = WordClassGen(n_jobs=N_JOBS)
+    # rnnEmbedder = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=256,
+    #                     nepochs=250, gpus=args.gpus, n_jobs=N_JOBS)
+    # bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=1, gpus=args.gpus, n_jobs=N_JOBS)
 
+    docEmbedders = DocEmbedderList([museEmbedder, wceEmbedder])
+
+    gfun = Funnelling(first_tier=docEmbedders)
+
+    # Training ---------------------------------------
+    print('\n[Training Generalized Funnelling]')
     time_init = time()
-    gFun.fit(lX, ly)
+    time_tr = time()
+    gfun.fit(lX, ly)
+    time_tr = round(time() - time_tr, 3)
+    print(f'Training completed in {time_tr} seconds!')
 
-    # print('Projecting...')
-    # y_ = gFun.transform(lX)
+    # Testing ----------------------------------------
+    print('\n[Testing Generalized Funnelling]')
+    time_te = time()
+    ly_ = gfun.predict(lXte)
 
-    train_time = round(time() - time_init, 3)
-    exit(f'Executed! Training time: {train_time}!')
+    l_eval = evaluate(ly_true=ly, ly_pred=ly_)
+    print(l_eval)
+
+    time_te = round(time() - time_te, 3)
+    print(f'Testing completed in {time_te} seconds!')
+
+    overall_time = round(time() - time_init, 3)
+    exit(f'\nExecuted in: {overall_time } seconds!')
 
 
 if __name__ == '__main__':

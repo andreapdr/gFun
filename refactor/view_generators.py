@@ -55,6 +55,7 @@ class VanillaFunGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, lY):
+        print('# Fitting VanillaFunGen...')
         lX = self.vectorizer.fit_transform(lX)
         self.doc_projector.fit(lX, lY)
         return self
@@ -84,6 +85,7 @@ class MuseGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
+        print('# Fitting MuseGen...')
         self.vectorizer.fit(lX)
         self.langs = sorted(lX.keys())
         self.lMuse = MuseLoader(langs=self.langs, cache=self.muse_dir)
@@ -105,7 +107,6 @@ class MuseGen(ViewGen):
 
 
 class WordClassGen(ViewGen):
-
     def __init__(self, n_jobs=-1):
         """
         generates document representation via Word-Class-Embeddings.
@@ -119,6 +120,7 @@ class WordClassGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
+        print('# Fitting WordClassGen...')
         lX = self.vectorizer.fit_transform(lX)
         self.langs = sorted(lX.keys())
         wce = Parallel(n_jobs=self.n_jobs)(
@@ -171,7 +173,7 @@ class RecurrentGen(ViewGen):
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         self.multilingualIndex.embedding_matrices(self.pretrained, supervised=self.wce)
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn_dev', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn', default_hp_metric=False)
         # self.logger = CSVLogger(save_dir='csv_logs', name='rnn_dev')
 
     def _init_model(self):
@@ -205,6 +207,7 @@ class RecurrentGen(ViewGen):
         :param ly:
         :return:
         """
+        print('# Fitting RecurrentGen...')
         recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size)
         trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=self.nepochs,
                           checkpoint_callback=False)
@@ -241,7 +244,6 @@ class RecurrentGen(ViewGen):
 
 
 class BertGen(ViewGen):
-
     def __init__(self, multilingualIndex, batch_size=128, nepochs=50, gpus=0, n_jobs=-1, stored_path=None):
         super().__init__()
         self.multilingualIndex = multilingualIndex
@@ -251,13 +253,14 @@ class BertGen(ViewGen):
         self.n_jobs = n_jobs
         self.stored_path = stored_path
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert_dev', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert', default_hp_metric=False)
 
     def _init_model(self):
         output_size = self.multilingualIndex.get_target_dim()
         return BertModel(output_size=output_size, stored_path=self.stored_path, gpus=self.gpus)
 
     def fit(self, lX, ly):
+        print('# Fitting BertGen...')
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
         trainer = Trainer(gradient_clip_val=1e-1, max_epochs=self.nepochs, gpus=self.gpus,
@@ -272,11 +275,14 @@ class BertGen(ViewGen):
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
         time_init = time()
-        l_emebds = self.model.encode(data)
-        pass
+        l_emebds = self.model.encode(data)  # TODO
+        transform_time = round(time() - time_init, 3)
+        print(f'Executed! Transform took: {transform_time}')
+        exit('BERT VIEWGEN TRANSFORM NOT IMPLEMENTED!')
+        return l_emebds
 
     def fit_transform(self, lX, ly):
         # we can assume that we have already indexed data for transform() since we are first calling fit()
-        pass
+        return self.fit(lX, ly).transform(lX)
 
 
