@@ -140,6 +140,22 @@ class RecurrentDataModule(pl.LightningDataModule):
                           collate_fn=self.test_dataset.collate_fn)
 
 
+def tokenize(l_raw, max_len):
+    """
+    run Bert tokenization on dict {lang: list of samples}.
+    :param l_raw:
+    :param max_len:
+    :return:
+    """
+    # TODO: check BertTokenizerFast https://huggingface.co/transformers/model_doc/bert.html#berttokenizerfast
+    tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
+    l_tokenized = {}
+    for lang in l_raw.keys():
+        output_tokenizer = tokenizer(l_raw[lang], truncation=True, max_length=max_len, padding='max_length')
+        l_tokenized[lang] = output_tokenizer['input_ids']
+    return l_tokenized
+
+
 class BertDataModule(RecurrentDataModule):
     def __init__(self, multilingualIndex, batchsize=64, max_len=512):
         super().__init__(multilingualIndex, batchsize)
@@ -152,7 +168,7 @@ class BertDataModule(RecurrentDataModule):
             l_train_raw = {l: train[:5] for l, train in l_train_raw.items()}
             l_train_target = {l: target[:5] for l, target in l_train_target.items()}
 
-            l_train_index = self.tokenize(l_train_raw, max_len=self.max_len)
+            l_train_index = tokenize(l_train_raw, max_len=self.max_len)
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
 
@@ -161,7 +177,7 @@ class BertDataModule(RecurrentDataModule):
             l_val_raw = {l: train[:5] for l, train in l_val_raw.items()}
             l_val_target = {l: target[:5] for l, target in l_val_target.items()}
 
-            l_val_index = self.tokenize(l_val_raw, max_len=self.max_len)
+            l_val_index = tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
 
@@ -171,19 +187,9 @@ class BertDataModule(RecurrentDataModule):
             l_test_raw = {l: train[:5] for l, train in l_test_raw.items()}
             l_test_target = {l: target[:5] for l, target in l_test_target.items()}
 
-            l_test_index = self.tokenize(l_test_raw, max_len=self.max_len)
+            l_test_index = tokenize(l_test_raw, max_len=self.max_len)
             self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
                                                  lPad_index=self.multilingualIndex.l_pad())
-
-    @staticmethod
-    def tokenize(l_raw, max_len):
-        # TODO: check BertTokenizerFast https://huggingface.co/transformers/model_doc/bert.html#berttokenizerfast
-        tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
-        l_tokenized = {}
-        for lang in l_raw.keys():
-            output_tokenizer = tokenizer(l_raw[lang], truncation=True, max_length=max_len, padding='max_length')
-            l_tokenized[lang] = output_tokenizer['input_ids']
-        return l_tokenized
 
     def train_dataloader(self):
         """

@@ -137,9 +137,9 @@ class RecurrentModel(pl.LightningModule):
                     output = output[-1, :, :]
                     output = F.relu(self.linear0(output))
                     output = self.dropout(F.relu(self.linear1(output)))
-                    l_embed[lang].append(output)
+                    l_embed[lang].append(output.cpu())
             for k, v in l_embed.items():
-                l_embed[k] = torch.cat(v, dim=0).cpu().numpy()
+                l_embed[k] = torch.cat(v, dim=0).numpy()
             return l_embed
 
     def training_step(self, train_batch, batch_idx):

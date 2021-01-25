@@ -21,7 +21,7 @@ from util.common import TfidfVectorizerMultilingual, _normalize
 from models.pl_gru import RecurrentModel
 from models.pl_bert import BertModel
 from pytorch_lightning import Trainer
-from data.datamodule import RecurrentDataModule, BertDataModule
+from data.datamodule import RecurrentDataModule, BertDataModule, tokenize
 from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from time import time
 
@@ -271,14 +271,14 @@ class BertGen(ViewGen):
 
     def transform(self, lX):
         # lX is raw text data. It has to be first indexed via Bert Tokenizer.
-        data = 'TOKENIZE THIS'
+        data = self.multilingualIndex.l_devel_raw_index()
+        data = tokenize(data, max_len=512)
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
         time_init = time()
-        l_emebds = self.model.encode(data)  # TODO
+        l_emebds = self.model.encode(data, batch_size=64)
         transform_time = round(time() - time_init, 3)
         print(f'Executed! Transform took: {transform_time}')
-        exit('BERT VIEWGEN TRANSFORM NOT IMPLEMENTED!')
         return l_emebds
 
     def fit_transform(self, lX, ly):

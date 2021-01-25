@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 from torch.optim.lr_scheduler import StepLR
 from transformers import BertForSequenceClassification, AdamW
 from util.pl_metrics import CustomF1, CustomK
+from util.common import define_pad_length, pad
 
 
 class BertModel(pl.LightningModule):
@@ -70,7 +71,7 @@ class BertModel(pl.LightningModule):
         langs = set(langs)
         # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
         # here we save epoch level metric values and compute them specifically for each language
-        # TODO: this is horrible...
+        # TODO: make this a function (reused in pl_gru epoch_end)
         res_macroF1 = {lang: [] for lang in langs}
         res_microF1 = {lang: [] for lang in langs}
         res_macroK = {lang: [] for lang in langs}
@@ -149,6 +150,25 @@ class BertModel(pl.LightningModule):
         optimizer = AdamW(optimizer_grouped_parameters, lr=lr)
         scheduler = StepLR(optimizer, step_size=25, gamma=0.1)
         return [optimizer], [scheduler]
+
+    def encode(self, lX, batch_size=64):
+        with torch.no_grad():
+            l_embed = {lang: [] for lang in lX.keys()}
+            for lang in sorted(lX.keys()):
+                for i in range(0, len(lX[lang]), batch_size):
+                    if i + batch_size > len(lX[lang]):
+                        batch = lX[lang][i:len(lX[lang])]
+                    else:
+                        batch = lX[lang][i:i + batch_size]
+                    max_pad_len = define_pad_length(batch)
+                    batch = pad(batch, pad_index='101', max_pad_length=max_pad_len)     # TODO: check pad index!
+                    batch = torch.LongTensor(batch).to('cuda' if self.gpus else 'cpu')
+                    _, output = self.forward(batch)
+                    doc_embeds = output[-1][:, 0, :]
+                    l_embed[lang].append(doc_embeds.cpu())
+            for k, v in l_embed.items():
+                l_embed[k] = torch.cat(v, dim=0).numpy()
+            return l_embed
 
     @staticmethod
     def _reconstruct_dict(predictions, y, batch_langs):
