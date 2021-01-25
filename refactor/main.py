@@ -4,6 +4,7 @@ from view_generators import *
 from data.dataset_builder import MultilingualDataset
 from util.common import MultilingualIndex
 from util.evaluation import evaluate
+from util.results_csv import CSVlog
 from time import time
 
 
@@ -49,12 +50,33 @@ def main(args):
     print('\n[Testing Generalized Funnelling]')
     time_te = time()
     ly_ = gfun.predict(lXte)
-
     l_eval = evaluate(ly_true=ly, ly_pred=ly_)
-    print(l_eval)
-
     time_te = round(time() - time_te, 3)
     print(f'Testing completed in {time_te} seconds!')
+
+    # Logging ---------------------------------------
+    print('\n[Results]')
+    results = CSVlog('test_log.csv')
+    metrics = []
+    for lang in lXte.keys():
+        macrof1, microf1, macrok, microk = l_eval[lang]
+        metrics.append([macrof1, microf1, macrok, microk])
+        print(f'Lang {lang}: macro-F1 = {macrof1:.3f} micro-F1 = {microf1:.3f}')
+        results.add_row(method='gfun',
+                        setting='TODO',
+                        sif='TODO',
+                        zscore='TRUE',
+                        l2='TRUE',
+                        dataset='TODO',
+                        time_tr=time_tr,
+                        time_te=time_te,
+                        lang=lang,
+                        macrof1=macrof1,
+                        microf1=microf1,
+                        macrok=macrok,
+                        microk=microk,
+                        notes='')
+    print('Averages: MF1, mF1, MK, mK', np.round(np.mean(np.array(metrics), axis=0), 3))
 
     overall_time = round(time() - time_init, 3)
     exit(f'\nExecuted in: {overall_time } seconds!')
