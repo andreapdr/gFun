@@ -15,7 +15,7 @@ class RecurrentModel(pl.LightningModule):
     def __init__(self, lPretrained, langs, output_size, hidden_size, lVocab_size, learnable_length,
                  drop_embedding_range, drop_embedding_prop, gpus=None):
         """
-
+        Init RNN model.
         :param lPretrained:
         :param langs:
         :param output_size:

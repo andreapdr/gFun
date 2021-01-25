@@ -105,16 +105,16 @@ class RecurrentDataModule(pl.LightningDataModule):
         if stage == 'fit' or stage is None:
             l_train_index, l_train_target = self.multilingualIndex.l_train()
             # Debug settings: reducing number of samples
-            # l_train_index = {l: train[:50] for l, train in l_train_index.items()}
-            # l_train_target = {l: target[:50] for l, target in l_train_target.items()}
+            l_train_index = {l: train[:50] for l, train in l_train_index.items()}
+            l_train_target = {l: target[:50] for l, target in l_train_target.items()}
 
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
 
             l_val_index, l_val_target = self.multilingualIndex.l_val()
             # Debug settings: reducing number of samples
-            # l_val_index = {l: train[:50] for l, train in l_val_index.items()}
-            # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
+            l_val_index = {l: train[:50] for l, train in l_val_index.items()}
+            l_val_target = {l: target[:50] for l, target in l_val_target.items()}
 
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
@@ -163,7 +163,7 @@ class BertDataModule(RecurrentDataModule):
 
         if stage == 'test' or stage is None:
             l_test_raw, l_test_target = self.multilingualIndex.l_test_raw()
-            l_test_index = self.tokenize(l_val_raw, max_len=self.max_len)
+            l_test_index = self.tokenize(l_test_raw, max_len=self.max_len)
             self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
                                                  lPad_index=self.multilingualIndex.l_pad())
 

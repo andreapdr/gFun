@@ -28,15 +28,16 @@ def main(args):
     # gFun = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=N_JOBS)
     # gFun = MuseGen(muse_dir='/home/andreapdr/funneling_pdr/embeddings', n_jobs=N_JOBS)
     # gFun = WordClassGen(n_jobs=N_JOBS)
-    gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=256,
-                        nepochs=50, gpus=args.gpus, n_jobs=N_JOBS)
-    # gFun = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=N_JOBS)
+    # gFun = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=False, batch_size=256,
+    #                     nepochs=50, gpus=args.gpus, n_jobs=N_JOBS)
+    gFun = BertGen(multilingualIndex, batch_size=4, nepochs=1, gpus=args.gpus, n_jobs=N_JOBS)
 
     time_init = time()
-    # gFun.fit(lX, ly)
+    gFun.fit(lX, ly)
 
-    print('Projecting...')
-    y_ = gFun.transform(lX)
+    # print('Projecting...')
+    # y_ = gFun.transform(lX)
+
     train_time = round(time() - time_init, 3)
     exit(f'Executed! Training time: {train_time}!')
 

@@ -228,7 +228,6 @@ class RecurrentGen(ViewGen):
         """
         l_pad = self.multilingualIndex.l_pad()
         data = self.multilingualIndex.l_devel_index()
-        # trainer = Trainer(gpus=self.gpus)
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
         time_init = time()
@@ -238,7 +237,7 @@ class RecurrentGen(ViewGen):
         return l_embeds
 
     def fit_transform(self, lX, ly):
-        pass
+        return self.fit(lX, ly).transform(lX)
 
 
 class BertGen(ViewGen):
@@ -268,7 +267,12 @@ class BertGen(ViewGen):
         return self
 
     def transform(self, lX):
-        # lX is raw text data. It has to be first indexed via multilingualIndex Vectorizer.
+        # lX is raw text data. It has to be first indexed via Bert Tokenizer.
+        data = 'TOKENIZE THIS'
+        self.model.to('cuda' if self.gpus else 'cpu')
+        self.model.eval()
+        time_init = time()
+        l_emebds = self.model.encode(data)
         pass
 
     def fit_transform(self, lX, ly):

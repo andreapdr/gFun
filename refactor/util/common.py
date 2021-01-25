@@ -161,6 +161,9 @@ class MultilingualIndex:
     def l_val_raw_index(self):
         return {l: index.val_raw for l, index in self.l_index.items()}
 
+    def l_test_raw_index(self):
+        return {l: index.test_raw for l, index in self.l_index.items()}
+
     def l_val_target(self):
         return {l: index.val_target for l, index in self.l_index.items()}
 
@@ -169,10 +172,6 @@ class MultilingualIndex:
 
     def l_test_index(self):
         return {l: index.test_index for l, index in self.l_index.items()}
-
-    def l_test_raw(self):
-        print('TODO: implement MultilingualIndex method to return RAW test data!')
-        return {l: index.test_raw for l, index in self.l_index.items()}
 
     def l_devel_index(self):
         return {l: index.devel_index for l, index in self.l_index.items()}
@@ -194,6 +193,9 @@ class MultilingualIndex:
 
     def l_val_raw(self):
         return self.l_val_raw_index(), self.l_val_target()
+
+    def l_test_raw(self):
+        return self.l_test_raw_index(), self.l_test_target()
 
     def get_l_pad_index(self):
         return {l: index.get_pad_index() for l, index in self.l_index.items()}
