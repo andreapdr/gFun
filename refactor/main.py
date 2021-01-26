@@ -46,7 +46,6 @@ def main(args):
 
     if args.bert_embedder:
         bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=args.n_jobs)
-        bertEmbedder.transform(lX)
         embedder_list.append(bertEmbedder)
 
     # Init DocEmbedderList (i.e., first-tier learners or view generators) and metaclassifier

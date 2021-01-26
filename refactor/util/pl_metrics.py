@@ -102,10 +102,10 @@ class CustomK(Metric):
             specificity, recall = 0., 0.
             absolute_negatives = self.true_negative.sum() + self.false_positive.sum()
             if absolute_negatives != 0:
-                specificity = self.true_negative.sum()/absolute_negatives # Todo check if it is float
+                specificity = self.true_negative.sum()/absolute_negatives
             absolute_positives = self.true_positive.sum() + self.false_negative.sum()
             if absolute_positives != 0:
-                recall = self.true_positive.sum()/absolute_positives # Todo check if it is float
+                recall = self.true_positive.sum()/absolute_positives
 
             if absolute_positives == 0:
                 return 2. * specificity - 1
@@ -125,10 +125,10 @@ class CustomK(Metric):
                 specificity, recall = 0., 0.
                 absolute_negatives = class_tn + class_fp
                 if absolute_negatives != 0:
-                    specificity = class_tn / absolute_negatives  # Todo check if it is float
+                    specificity = class_tn / absolute_negatives
                 absolute_positives = class_tp + class_fn
                 if absolute_positives != 0:
-                    recall = class_tp / absolute_positives  # Todo check if it is float
+                    recall = class_tp / absolute_positives
 
                 if absolute_positives == 0:
                     class_specific.append(2. * specificity - 1)

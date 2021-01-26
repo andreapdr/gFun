@@ -1,18 +1,19 @@
 """
 This module contains the view generators that take care of computing the view specific document embeddings:
 
-- VanillaFunGen (-X) cast document representations encoded via TFIDF into posterior probabilities by means of SVM.
+- VanillaFunGen (-x) cast document representations encoded via TFIDF into posterior probabilities by means of SVM.
 
-- WordClassGen (-W): generates document representation via Word-Class-Embeddings.
+- WordClassGen (-w): generates document representation via Word-Class-Embeddings.
     Document embeddings are obtained via weighted sum of document's constituent embeddings.
 
-- MuseGen (-M):
+- MuseGen (-m): generates document representation via MUSE embeddings.
+    Document embeddings are obtained via weighted sum of document's constituent embeddings.
 
-- RecurrentGen (-G): generates document embedding by means of a Gated Recurrent Units. The model can be
+- RecurrentGen (-g): generates document embedding by means of a Gated Recurrent Units. The model can be
     initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,).
     Output dimension is (n_docs, 512).
 
-- View generator (-B): generates document embedding via mBERT model.
+- View generator (-b): generates document embedding via mBERT model.
 """
 from abc import ABC, abstractmethod
 from models.learners import *
@@ -153,9 +154,6 @@ class WordClassGen(ViewGen):
 
 
 class RecurrentGen(ViewGen):
-    # TODO: save model https://forums.pytorchlightning.ai/t/how-to-save-hparams-when-not-provided-as-argument-apparently-assigning-to-hparams-is-not-recomended/339/5
-    #  Problem: we are passing lPretrained to init the RecurrentModel -> incredible slow at saving (checkpoint).
-    #  if we do not save it is impossible to init RecurrentModel by calling RecurrentModel.load_from_checkpoint()
     def __init__(self, multilingualIndex, pretrained_embeddings, wce, batch_size=512, nepochs=50,
                  gpus=0, n_jobs=-1, stored_path=None):
         """

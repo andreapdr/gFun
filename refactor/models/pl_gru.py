@@ -41,8 +41,7 @@ class RecurrentModel(pl.LightningModule):
         self.macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
         self.microK = CustomK(num_classes=output_size, average='micro', device=self.gpus)
         self.macroK = CustomK(num_classes=output_size, average='macro', device=self.gpus)
-        # Language specific metrics - I am not really sure if they should be initialized
-        # independently or we can use the metrics init above... # TODO: check it
+        # Language specific metrics to compute metrics at epoch level
         self.lang_macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
         self.lang_microF1 = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
         self.lang_macroK = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
@@ -110,7 +109,6 @@ class RecurrentModel(pl.LightningModule):
     def encode(self, lX, l_pad, batch_size=128):
         """
         Returns encoded data (i.e, RNN hidden state at second feed-forward layer - linear1). Dimensionality is 512.
-        # TODO: does not run on gpu..
         :param lX:
         :param l_pad:
         :param batch_size:
@@ -167,7 +165,6 @@ class RecurrentModel(pl.LightningModule):
     def training_epoch_end(self, outputs):
         # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
         # here we save epoch level metric values and compute them specifically for each language
-        # TODO: this is horrible...
         res_macroF1 = {lang: [] for lang in self.langs}
         res_microF1 = {lang: [] for lang in self.langs}
         res_macroK = {lang: [] for lang in self.langs}

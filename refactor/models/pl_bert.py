@@ -22,8 +22,7 @@ class BertModel(pl.LightningModule):
         self.macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
         self.microK = CustomK(num_classes=output_size, average='micro', device=self.gpus)
         self.macroK = CustomK(num_classes=output_size, average='macro', device=self.gpus)
-        # Language specific metrics - I am not really sure if they should be initialized
-        # independently or we can use the metrics init above... # TODO: check it
+        # Language specific metrics to compute metrics at epoch level
         self.lang_macroF1 = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
         self.lang_microF1 = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
         self.lang_macroK = CustomF1(num_classes=output_size, average='macro', device=self.gpus)
@@ -71,7 +70,6 @@ class BertModel(pl.LightningModule):
         langs = set(langs)
         # outputs is a of n dicts of m elements, where n is equal to the number of epoch steps and m is batchsize.
         # here we save epoch level metric values and compute them specifically for each language
-        # TODO: make this a function (reused in pl_gru epoch_end)
         res_macroF1 = {lang: [] for lang in langs}
         res_microF1 = {lang: [] for lang in langs}
         res_macroK = {lang: [] for lang in langs}
