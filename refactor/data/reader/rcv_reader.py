@@ -1,15 +1,12 @@
-from zipfile import ZipFile
-import xml.etree.ElementTree as ET
-from data.languages import RCV2_LANGS_WITH_NLTK_STEMMING, RCV2_LANGS
-from util.file import list_files
-from sklearn.datasets import get_data_home
-import gzip
-from os.path import join, exists
-from util.file import download_file_if_not_exists
 import re
-from collections import Counter
+import xml.etree.ElementTree as ET
+from os.path import join, exists
+from zipfile import ZipFile
+
 import numpy as np
-import sys
+
+from util.file import download_file_if_not_exists
+from util.file import list_files
 
 """
 RCV2's Nomenclature:

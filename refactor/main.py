@@ -1,11 +1,11 @@
 from argparse import ArgumentParser
-from funnelling import *
-from view_generators import *
+
 from data.dataset_builder import MultilingualDataset
+from funnelling import *
 from util.common import MultilingualIndex, get_params, get_method_name
 from util.evaluation import evaluate
 from util.results_csv import CSVlog
-from time import time
+from view_generators import *
 
 
 def main(args):

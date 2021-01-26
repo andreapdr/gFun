@@ -1,14 +1,15 @@
 # Lightning modules, see https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html
+import pytorch_lightning as pl
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
 from transformers import AdamW
-import pytorch_lightning as pl
+
 from models.helpers import init_embeddings
-from util.pl_metrics import CustomF1, CustomK
 from util.common import define_pad_length, pad
+from util.pl_metrics import CustomF1, CustomK
 
 
 class RecurrentModel(pl.LightningModule):

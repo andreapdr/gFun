@@ -1,15 +1,18 @@
 from __future__ import print_function
+
 # import ijson
 # from ijson.common import ObjectBuilder
-import os, sys
-from os.path import join
-from bz2 import BZ2File
+import os
 import pickle
-from util.file import list_dirs, list_files, makedirs_if_not_exist
-from itertools import islice
 import re
+from bz2 import BZ2File
+from itertools import islice
+from os.path import join
 from xml.sax.saxutils import escape
+
 import numpy as np
+
+from util.file import list_dirs, list_files
 
 policies = ["IN_ALL_LANGS", "IN_ANY_LANG"]
 

@@ -1,19 +1,21 @@
-from os.path import join, exists
-from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.preprocessing import MultiLabelBinarizer
-from data.reader.jrcacquis_reader import *
-from data.languages import lang_set, NLTK_LANGMAP, RCV2_LANGS_WITH_NLTK_STEMMING
-from data.reader.rcv_reader import fetch_RCV1, fetch_RCV2, fetch_topic_hierarchy
-from data.text_preprocessor import NLTKStemTokenizer, preprocess_documents
-import pickle
-import numpy as np
-from sklearn.model_selection import train_test_split
-from scipy.sparse import issparse
 import itertools
-from tqdm import tqdm
+import pickle
 import re
+from os.path import exists
+
+import numpy as np
+from nltk.corpus import stopwords
 from scipy.sparse import csr_matrix
+from scipy.sparse import issparse
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MultiLabelBinarizer
+from tqdm import tqdm
+
+from data.languages import NLTK_LANGMAP, RCV2_LANGS_WITH_NLTK_STEMMING
+from data.reader.jrcacquis_reader import *
+from data.reader.rcv_reader import fetch_RCV1, fetch_RCV2
+from data.text_preprocessor import NLTKStemTokenizer, preprocess_documents
 
 
 class MultilingualDataset:

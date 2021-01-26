@@ -16,15 +16,17 @@ This module contains the view generators that take care of computing the view sp
 - View generator (-b): generates document embedding via mBERT model.
 """
 from abc import ABC, abstractmethod
-from models.learners import *
-from util.embeddings_manager import MuseLoader, XdotM, wce_matrix
-from util.common import TfidfVectorizerMultilingual, _normalize
-from models.pl_gru import RecurrentModel
-from models.pl_bert import BertModel
-from pytorch_lightning import Trainer
-from data.datamodule import RecurrentDataModule, BertDataModule, tokenize
-from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 from time import time
+
+from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import TensorBoardLogger
+
+from data.datamodule import RecurrentDataModule, BertDataModule, tokenize
+from models.learners import *
+from models.pl_bert import BertModel
+from models.pl_gru import RecurrentModel
+from util.common import TfidfVectorizerMultilingual, _normalize
+from util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 
 
 class ViewGen(ABC):

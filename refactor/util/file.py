@@ -1,6 +1,6 @@
+import urllib
 from os import listdir, makedirs
 from os.path import isdir, isfile, join, exists, dirname
-import urllib
 from pathlib import Path
 
 

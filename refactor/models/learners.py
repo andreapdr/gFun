@@ -1,10 +1,12 @@
-import numpy as np
 import time
-from scipy.sparse import issparse
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.svm import SVC
+
+import numpy as np
 from joblib import Parallel, delayed
+from scipy.sparse import issparse
+from sklearn.model_selection import GridSearchCV
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import SVC
+
 from util.standardizer import StandardizeTransformer
 
 

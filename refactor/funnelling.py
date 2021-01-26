@@ -1,6 +1,6 @@
 from models.learners import *
-from view_generators import VanillaFunGen
 from util.common import _normalize
+from view_generators import VanillaFunGen
 
 
 class DocEmbedderList:

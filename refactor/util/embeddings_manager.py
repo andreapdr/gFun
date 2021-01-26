@@ -1,7 +1,9 @@
-from torchtext.vocab import Vectors
-import torch
 from abc import ABC, abstractmethod
+
 import numpy as np
+import torch
+from torchtext.vocab import Vectors
+
 from util.SIF_embed import remove_pc
 
 

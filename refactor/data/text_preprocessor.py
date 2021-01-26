@@ -1,7 +1,8 @@
-from nltk.corpus import stopwords
-from data.languages import NLTK_LANGMAP
 from nltk import word_tokenize
+from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
+
+from data.languages import NLTK_LANGMAP
 
 
 def preprocess_documents(documents, lang):

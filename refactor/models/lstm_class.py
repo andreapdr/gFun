@@ -1,7 +1,6 @@
 #taken from https://github.com/prakashpandey9/Text-Classification-Pytorch/blob/master/models/LSTM.py
-import torch
-import torch.nn as nn
 from torch.autograd import Variable
+
 from models.helpers import *
 
 

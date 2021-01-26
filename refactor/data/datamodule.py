@@ -1,7 +1,7 @@
-import torch
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pytorch_lightning as pl
+import torch
+from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer
 
 N_WORKERS = 8

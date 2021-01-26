@@ -1,9 +1,9 @@
 import numpy as np
 import torch
-from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import normalize
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import normalize
+
 from util.embeddings_manager import supervised_embeddings_tfidf
 
 
