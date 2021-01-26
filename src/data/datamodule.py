@@ -112,24 +112,24 @@ class RecurrentDataModule(pl.LightningDataModule):
         if stage == 'fit' or stage is None:
             l_train_index, l_train_target = self.multilingualIndex.l_train()
             # Debug settings: reducing number of samples
-            l_train_index = {l: train[:5] for l, train in l_train_index.items()}
-            l_train_target = {l: target[:5] for l, target in l_train_target.items()}
+            # l_train_index = {l: train[:5] for l, train in l_train_index.items()}
+            # l_train_target = {l: target[:5] for l, target in l_train_target.items()}
 
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
                                                      lPad_index=self.multilingualIndex.l_pad())
 
             l_val_index, l_val_target = self.multilingualIndex.l_val()
             # Debug settings: reducing number of samples
-            l_val_index = {l: train[:5] for l, train in l_val_index.items()}
-            l_val_target = {l: target[:5] for l, target in l_val_target.items()}
+            # l_val_index = {l: train[:5] for l, train in l_val_index.items()}
+            # l_val_target = {l: target[:5] for l, target in l_val_target.items()}
 
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
                                                 lPad_index=self.multilingualIndex.l_pad())
         if stage == 'test' or stage is None:
             l_test_index, l_test_target = self.multilingualIndex.l_test()
             # Debug settings: reducing number of samples
-            l_test_index = {l: train[:5] for l, train in l_test_index.items()}
-            l_test_target = {l: target[:5] for l, target in l_test_target.items()}
+            # l_test_index = {l: train[:5] for l, train in l_test_index.items()}
+            # l_test_target = {l: target[:5] for l, target in l_test_target.items()}
 
             self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
                                                  lPad_index=self.multilingualIndex.l_pad())
@@ -182,8 +182,8 @@ class BertDataModule(RecurrentDataModule):
         if stage == 'fit' or stage is None:
             l_train_raw, l_train_target = self.multilingualIndex.l_train_raw()
             # Debug settings: reducing number of samples
-            l_train_raw = {l: train[:5] for l, train in l_train_raw.items()}
-            l_train_target = {l: target[:5] for l, target in l_train_target.items()}
+            # l_train_raw = {l: train[:5] for l, train in l_train_raw.items()}
+            # l_train_target = {l: target[:5] for l, target in l_train_target.items()}
 
             l_train_index = tokenize(l_train_raw, max_len=self.max_len)
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
@@ -191,8 +191,8 @@ class BertDataModule(RecurrentDataModule):
 
             l_val_raw, l_val_target = self.multilingualIndex.l_val_raw()
             # Debug settings: reducing number of samples
-            l_val_raw = {l: train[:5] for l, train in l_val_raw.items()}
-            l_val_target = {l: target[:5] for l, target in l_val_target.items()}
+            # l_val_raw = {l: train[:5] for l, train in l_val_raw.items()}
+            # l_val_target = {l: target[:5] for l, target in l_val_target.items()}
 
             l_val_index = tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,
@@ -201,8 +201,8 @@ class BertDataModule(RecurrentDataModule):
         if stage == 'test' or stage is None:
             l_test_raw, l_test_target = self.multilingualIndex.l_test_raw()
             # Debug settings: reducing number of samples
-            l_test_raw = {l: train[:5] for l, train in l_test_raw.items()}
-            l_test_target = {l: target[:5] for l, target in l_test_target.items()}
+            # l_test_raw = {l: train[:5] for l, train in l_test_raw.items()}
+            # l_test_target = {l: target[:5] for l, target in l_test_target.items()}
 
             l_test_index = tokenize(l_test_raw, max_len=self.max_len)
             self.test_dataset = RecurrentDataset(l_test_index, l_test_target,
