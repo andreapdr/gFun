@@ -41,17 +41,20 @@ class ViewGen(ABC):
 
 
 class VanillaFunGen(ViewGen):
-    def __init__(self, base_learner, n_jobs=-1):
+    def __init__(self, base_learner, first_tier_parameters=None, n_jobs=-1):
         """
         Original funnelling architecture proposed by Moreo, Esuli and Sebastiani in DOI: https://doi.org/10.1145/3326065
         :param base_learner: naive monolingual learners to be deployed as first-tier learners. Should be able to
         return posterior probabilities.
+        :param base_learner:
         :param n_jobs: integer, number of concurrent workers
         """
         super().__init__()
         self.learners = base_learner
+        self.first_tier_parameters = first_tier_parameters
         self.n_jobs = n_jobs
-        self.doc_projector = NaivePolylingualClassifier(self.learners)
+        self.doc_projector = NaivePolylingualClassifier(base_learner=self.learners,
+                                                        parameters=self.first_tier_parameters, n_jobs=self.n_jobs)
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, lY):
@@ -61,8 +64,16 @@ class VanillaFunGen(ViewGen):
         return self
 
     def transform(self, lX):
+        """
+        (1) Vectorize documents
+        (2) Project them according to the learners SVMs
+        (3) Apply L2 normalization to the projection
+        :param lX:
+        :return:
+        """
         lX = self.vectorizer.transform(lX)
         lZ = self.doc_projector.predict_proba(lX)
+        lZ = _normalize(lZ, l2=True)
         return lZ
 
     def fit_transform(self, lX, ly):

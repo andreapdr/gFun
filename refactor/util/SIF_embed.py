@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.decomposition import TruncatedSVD
 
+
 def get_weighted_average(We, x, w):
     """
     Compute the weighted average vectors
@@ -15,6 +16,7 @@ def get_weighted_average(We, x, w):
         emb[i,:] = w[i,:].dot(We[x[i,:],:]) / np.count_nonzero(w[i,:])
     return emb
 
+
 def compute_pc(X,npc=1):
     """
     Compute the principal components.
@@ -26,6 +28,7 @@ def compute_pc(X,npc=1):
     svd.fit(X)
     return svd.components_
 
+
 def remove_pc(X, npc=1):
     """
     Remove the projection on the principal components
@@ -34,7 +37,7 @@ def remove_pc(X, npc=1):
     :return: XX[i, :] is the data point after removing its projection
     """
     pc = compute_pc(X, npc)
-    if npc==1:
+    if npc == 1:
         XX = X - X.dot(pc.transpose()) * pc
     else:
         XX = X - X.dot(pc.transpose()).dot(pc)
