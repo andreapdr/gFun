@@ -16,6 +16,7 @@ torchtext==0.4.0
 scikit_learn==0.24.1
 ```
 
+## Usage
 ```commandline
 usage: main.py [-h] [-o CSV_DIR] [-x] [-w] [-m] [-b] [-g] [-c] [-n NEPOCHS]
                [-j N_JOBS] [--muse_dir MUSE_DIR] [--gru_wce]
