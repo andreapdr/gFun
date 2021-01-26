@@ -38,7 +38,7 @@ optional arguments:
   -g, --gru_embedder    deploy a GRU in order to compute document embeddings
   -c, --c_optimize      optimize SVMs C hyperparameter
   -j, --n_jobs          number of parallel jobs (default is -1, all)
-  --nepochs_rnn         number of max epochs to train Recurrent embedder (i.e., -g), default 150.
+  --nepochs_rnn         number of max epochs to train Recurrent embedder (i.e., -g), default 150
   --nepochs_bert        number of max epochs to train Bert model (i.e., -g), default 10
   --muse_dir            path to the MUSE polylingual word embeddings (default ../embeddings)
   --gru_wce             deploy WCE embedding as embedding layer of the GRU View Generator

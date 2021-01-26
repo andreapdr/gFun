@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
     parser.add_argument('dataset', help='Path to the dataset')
 
-    parser.add_argument('-o', '--output', dest='csv_dir',
+    parser.add_argument('-o', '--output', dest='csv_dir', metavar='',
                         help='Result file (default ../csv_logs/gfun/gfun_results.csv)', type=str,
                         default='../csv_logs/gfun/gfun_results.csv')
 
@@ -133,22 +133,22 @@ if __name__ == '__main__':
                         default=False)
 
     parser.add_argument('-c', '--c_optimize', dest='optimc', action='store_true',
-                        help='Optimize SVMs C hyperparameter',
+                        help='Optimize SVMs C hyperparameter at metaclassifier level',
                         default=False)
 
-    parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int,
+    parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int, metavar='',
                         help='Number of parallel jobs (default is -1, all)',
                         default=-1)
 
-    parser.add_argument('--nepochs_rnn', dest='nepochs_rnn', type=int,
-                        help='Number of max epochs to train Recurrent embedder (i.e., -g), default 150.',
+    parser.add_argument('--nepochs_rnn', dest='nepochs_rnn', type=int, metavar='',
+                        help='Number of max epochs to train Recurrent embedder (i.e., -g), default 150',
                         default=150)
 
-    parser.add_argument('--nepochs_bert', dest='nepochs_bert', type=int,
+    parser.add_argument('--nepochs_bert', dest='nepochs_bert', type=int, metavar='',
                         help='Number of max epochs to train Bert model (i.e., -g), default 10',
                         default=10)
 
-    parser.add_argument('--muse_dir', dest='muse_dir', type=str,
+    parser.add_argument('--muse_dir', dest='muse_dir', type=str, metavar='',
                         help='Path to the MUSE polylingual word embeddings (default ../embeddings)',
                         default='../embeddings')
 
@@ -156,15 +156,15 @@ if __name__ == '__main__':
                         help='Deploy WCE embedding as embedding layer of the GRU View Generator',
                         default=False)
 
-    parser.add_argument('--gru_dir', dest='gru_dir', type=str,
+    parser.add_argument('--gru_dir', dest='gru_dir', type=str, metavar='',
                         help='Set the path to a pretrained GRU model (i.e., -g view generator)',
                         default=None)
 
-    parser.add_argument('--bert_dir', dest='bert_dir', type=str,
+    parser.add_argument('--bert_dir', dest='bert_dir', type=str, metavar='',
                         help='Set the path to a pretrained mBERT model (i.e., -b view generator)',
                         default=None)
 
-    parser.add_argument('--gpus', help='specifies how many GPUs to use per node',
+    parser.add_argument('--gpus', metavar='', help='specifies how many GPUs to use per node',
                         default=None)
 
     args = parser.parse_args()
