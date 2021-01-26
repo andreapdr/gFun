@@ -163,6 +163,11 @@ class BertModel(pl.LightningModule):
                     batch = pad(batch, pad_index=self.bert.config.pad_token_id, max_pad_length=max_pad_len)
                     batch = torch.LongTensor(batch).to('cuda' if self.gpus else 'cpu')
                     _, output = self.forward(batch)
+
+                    # deleting batch from gpu to avoid cuda OOM
+                    del batch
+                    torch.cuda.empty_cache()
+
                     doc_embeds = output[-1][:, 0, :]
                     l_embed[lang].append(doc_embeds.cpu())
             for k, v in l_embed.items():
