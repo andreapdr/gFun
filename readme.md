@@ -1,4 +1,22 @@
+# Generalized Funnelling (gFun)
+
+## Requirements
+```commandline
+transformers==2.11.0
+pandas==0.25.3
+numpy==1.17.4
+joblib==0.14.0
+tqdm==4.50.2
+pytorch_lightning==1.1.2
+torch==1.3.1
+nltk==3.4.5
+scipy==1.3.3
+rdflib==4.2.2
+torchtext==0.4.0
+scikit_learn==0.24.1
 ```
+
+```commandline
 usage: main.py [-h] [-o CSV_DIR] [-x] [-w] [-m] [-b] [-g] [-c] [-n NEPOCHS]
                [-j N_JOBS] [--muse_dir MUSE_DIR] [--gru_wce]
                [--gru_dir GRU_DIR] [--bert_dir BERT_DIR] [--gpus GPUS]
