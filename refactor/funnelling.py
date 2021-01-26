@@ -4,9 +4,13 @@ from view_generators import VanillaFunGen
 
 
 class DocEmbedderList:
+    """
+    Class that takes care of calling fit and transform function for every init embedder. Every ViewGenerator should be
+    contained by this class in order to seamlessly train the overall architecture.
+    """
     def __init__(self, embedder_list, probabilistic=True):
         """
-        Class that takes care of calling fit and transform function for every init embedder.
+        Init the DocEmbedderList.
         :param embedder_list: list of embedders to be deployed
         :param probabilistic: whether to recast view generators output to vectors of posterior probabilities or not
         """
@@ -23,11 +27,22 @@ class DocEmbedderList:
         self.embedders = _tmp
 
     def fit(self, lX, ly):
+        """
+        Fit all the ViewGenerators contained by DocEmbedderList.
+        :param lX:
+        :param ly:
+        :return: self
+        """
         for embedder in self.embedders:
             embedder.fit(lX, ly)
         return self
 
     def transform(self, lX):
+        """
+        Project documents by means of every ViewGenerators. Projections are then averaged together and returned.
+        :param lX:
+        :return: common latent space (averaged).
+        """
         langs = sorted(lX.keys())
         lZparts = {lang: None for lang in langs}
 
@@ -40,14 +55,24 @@ class DocEmbedderList:
                 else:
                     lZparts[lang] += Z
         n_embedders = len(self.embedders)
-        return {lang: lZparts[lang]/n_embedders for lang in langs}
+        return {lang: lZparts[lang]/n_embedders for lang in langs}  # Averaging feature spaces
 
     def fit_transform(self, lX, ly):
         return self.fit(lX, ly).transform(lX)
 
 
 class FeatureSet2Posteriors:
+    """
+    Takes care of recasting features outputted by the embedders to vecotrs of posterior probabilities by means of
+    a multiclass SVM.
+    """
     def __init__(self, embedder, l2=True, n_jobs=-1):
+        """
+        Init the class.
+        :param embedder: ViewGen, view generators which does not natively outputs posterior probabilities.
+        :param l2: bool, whether to apply or not L2 normalization to the projection
+        :param n_jobs: int, number of concurrent workers.
+        """
         self.embedder = embedder
         self.l2 = l2
         self.n_jobs = n_jobs
@@ -77,6 +102,11 @@ class FeatureSet2Posteriors:
 
 
 class Funnelling:
+    """
+    Funnelling Architecture. It is composed by two tiers. The first-tier is a set of heterogeneous document embedders.
+    The second-tier (i.e., the metaclassifier), operates the classification of the common latent space computed by
+    the first-tier learners.
+    """
     def __init__(self, first_tier: DocEmbedderList, meta_classifier: MetaClassifier, n_jobs=-1):
         self.first_tier = first_tier
         self.meta = meta_classifier

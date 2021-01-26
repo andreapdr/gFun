@@ -26,6 +26,7 @@ def main(args):
         lMuse = MuseLoader(langs=sorted(lX.keys()), cache=args.muse_dir)
         multilingualIndex.index(lX, ly, lXte, lyte, l_pretrained_vocabulary=lMuse.vocabulary())
 
+    # Init ViewGenerators and append them to embedder_list
     embedder_list = []
     if args.post_embedder:
         posteriorEmbedder = VanillaFunGen(base_learner=get_learner(calibrate=True), n_jobs=args.n_jobs)

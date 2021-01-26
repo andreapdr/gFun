@@ -30,6 +30,10 @@ from util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 
 
 class ViewGen(ABC):
+    """
+    Abstract class for ViewGenerators implementations. Every ViewGen should implement these three methods in order to
+    be seamlessly integrated in the overall architecture.
+    """
     @abstractmethod
     def fit(self, lX, ly):
         pass
@@ -44,9 +48,13 @@ class ViewGen(ABC):
 
 
 class VanillaFunGen(ViewGen):
+    """
+    View Generator (x): original funnelling architecture proposed by Moreo, Esuli and
+    Sebastiani in DOI: https://doi.org/10.1145/3326065
+    """
     def __init__(self, base_learner, first_tier_parameters=None, n_jobs=-1):
         """
-        Original funnelling architecture proposed by Moreo, Esuli and Sebastiani in DOI: https://doi.org/10.1145/3326065
+        Init Posterior Probabilities embedder (i.e., VanillaFunGen)
         :param base_learner: naive monolingual learners to be deployed as first-tier learners. Should be able to
         return posterior probabilities.
         :param base_learner:
@@ -68,11 +76,10 @@ class VanillaFunGen(ViewGen):
 
     def transform(self, lX):
         """
-        (1) Vectorize documents
-        (2) Project them according to the learners SVMs
-        (3) Apply L2 normalization to the projection
-        :param lX:
-        :return:
+        (1) Vectorize documents; (2) Project them according to the learners SVMs, finally (3) Apply L2 normalization
+        to the projection and returns it.
+        :param lX: dict {lang: indexed documents}
+        :return: document projection to the common latent space.
         """
         lX = self.vectorizer.transform(lX)
         lZ = self.doc_projector.predict_proba(lX)
@@ -84,10 +91,13 @@ class VanillaFunGen(ViewGen):
 
 
 class MuseGen(ViewGen):
+    """
+    View Generator (m): generates document representation via MUSE embeddings (Fasttext multilingual word
+    embeddings). Document embeddings are obtained via weighted sum of document's constituent embeddings.
+    """
     def __init__(self, muse_dir='../embeddings', n_jobs=-1):
         """
-        generates document representation via MUSE embeddings (Fasttext multilingual word
-        embeddings). Document embeddings are obtained via weighted sum of document's constituent embeddings.
+        Init the MuseGen.
         :param muse_dir: string, path to folder containing muse embeddings
         :param n_jobs: int, number of concurrent workers
         """
@@ -99,6 +109,12 @@ class MuseGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
+        """
+        (1) Vectorize documents; (2) Load muse embeddings for words encountered while vectorizing.
+        :param lX: dict {lang: indexed documents}
+        :param ly: dict {lang: target vectors}
+        :return: self.
+        """
         print('# Fitting MuseGen (M)...')
         self.vectorizer.fit(lX)
         self.langs = sorted(lX.keys())
@@ -109,6 +125,12 @@ class MuseGen(ViewGen):
         return self
 
     def transform(self, lX):
+        """
+        (1) Vectorize documents; (2) computes the weighted sum of MUSE embeddings found at document level,
+         finally (3) Apply L2 normalization embedding and returns it.
+        :param lX: dict {lang: indexed documents}
+        :return: document projection to the common latent space.
+        """
         lX = self.vectorizer.transform(lX)
         XdotMUSE = Parallel(n_jobs=self.n_jobs)(
             delayed(XdotM)(lX[lang], self.lMuse[lang], sif=True) for lang in self.langs)
@@ -121,10 +143,13 @@ class MuseGen(ViewGen):
 
 
 class WordClassGen(ViewGen):
+    """
+    View Generator (w): generates document representation via Word-Class-Embeddings.
+    Document embeddings are obtained via weighted sum of document's constituent embeddings.
+    """
     def __init__(self, n_jobs=-1):
         """
-        generates document representation via Word-Class-Embeddings.
-        Document embeddings are obtained via weighted sum of document's constituent embeddings.
+        Init WordClassGen.
         :param n_jobs: int, number of concurrent workers
         """
         super().__init__()
@@ -134,6 +159,12 @@ class WordClassGen(ViewGen):
         self.vectorizer = TfidfVectorizerMultilingual(sublinear_tf=True, use_idf=True)
 
     def fit(self, lX, ly):
+        """
+        (1) Vectorize documents; (2) Load muse embeddings for words encountered while vectorizing.
+        :param lX: dict {lang: indexed documents}
+        :param ly: dict {lang: target vectors}
+        :return: self.
+        """
         print('# Fitting WordClassGen (W)...')
         lX = self.vectorizer.fit_transform(lX)
         self.langs = sorted(lX.keys())
@@ -144,6 +175,12 @@ class WordClassGen(ViewGen):
         return self
 
     def transform(self, lX):
+        """
+        (1) Vectorize documents; (2) computes the weighted sum of Word-Class Embeddings found at document level,
+         finally (3) Apply L2 normalization embedding and returns it.
+        :param lX: dict {lang: indexed documents}
+        :return: document projection to the common latent space.
+        """
         lX = self.vectorizer.transform(lX)
         XdotWce = Parallel(n_jobs=self.n_jobs)(
             delayed(XdotM)(lX[lang], self.lWce[lang], sif=True) for lang in self.langs)
@@ -156,17 +193,28 @@ class WordClassGen(ViewGen):
 
 
 class RecurrentGen(ViewGen):
+    """
+    View Generator (G): generates document embedding by means of a Gated Recurrent Units. The model can be
+    initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,).
+    Output dimension is (n_docs, 512). The training will happen end-to-end. At inference time, the model returns
+    the network internal state at the second feed-forward layer level. Training metrics are logged via TensorBoard.
+    """
     def __init__(self, multilingualIndex, pretrained_embeddings, wce, batch_size=512, nepochs=50,
                  gpus=0, n_jobs=-1, stored_path=None):
         """
-        generates document embedding by means of a Gated Recurrent Units. The model can be
-        initialized with different (multilingual/aligned) word representations (e.g., MUSE, WCE, ecc.,).
-        Output dimension is (n_docs, 512).
-        :param multilingualIndex:
-        :param pretrained_embeddings:
-        :param wce:
-        :param gpus:
-        :param n_jobs:
+        Init RecurrentGen.
+        :param multilingualIndex: MultilingualIndex, it is a dictionary of training and test documents
+        indexed by language code.
+        :param pretrained_embeddings: dict {lang: tensor of embeddings}, it contains the pretrained embeddings to use
+        as embedding layer.
+        :param wce: Bool, whether to deploy Word-Class Embeddings (as proposed by A. Moreo). If True, supervised
+        embeddings are concatenated to the deployed supervised embeddings. WCE dimensionality is equal to
+        the number of target classes.
+        :param batch_size: int, number of samples in a batch.
+        :param nepochs: int, number of max epochs to train the model.
+        :param gpus: int,  specifies how many GPUs to use per node. If False computation will take place on cpu.
+        :param n_jobs: int, number of concurrent workers (i.e., parallelizing data loading).
+        :param stored_path: str, path to a pretrained model. If None the model will be trained from scratch.
         """
         super().__init__()
         self.multilingualIndex = multilingualIndex
@@ -212,14 +260,15 @@ class RecurrentGen(ViewGen):
 
     def fit(self, lX, ly):
         """
+        Train the Neural Network end-to-end.
         lX and ly are not directly used. We rather get them from the multilingual index used in the instantiation
         of the Dataset object (RecurrentDataset) in the GfunDataModule class.
-        :param lX:
-        :param ly:
-        :return:
+        :param lX: dict {lang: indexed documents}
+        :param ly: dict {lang: target vectors}
+        :return: self.
         """
         print('# Fitting RecurrentGen (G)...')
-        recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size)
+        recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size, n_jobs=self.n_jobs)
         trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=self.nepochs,
                           checkpoint_callback=False)
 
@@ -236,9 +285,9 @@ class RecurrentGen(ViewGen):
 
     def transform(self, lX):
         """
-        Project documents to the common latent space
-        :param lX:
-        :return:
+        Project documents to the common latent space. Output dimensionality is 512.
+        :param lX: dict {lang: indexed documents}
+        :return: documents projected to the common latent space.
         """
         l_pad = self.multilingualIndex.l_pad()
         data = self.multilingualIndex.l_devel_index()
@@ -255,7 +304,22 @@ class RecurrentGen(ViewGen):
 
 
 class BertGen(ViewGen):
+    """
+    View Generator (b):  generates document embedding via Bert model. The training happens end-to-end.
+    At inference time, the model returns the network internal state at the last original layer (i.e. 12th). Document
+    embeddings are the state associated with the "start" token. Training metrics are logged via TensorBoard.
+    """
     def __init__(self, multilingualIndex, batch_size=128, nepochs=50, gpus=0, n_jobs=-1, stored_path=None):
+        """
+        Init Bert model
+        :param multilingualIndex: MultilingualIndex, it is a dictionary of training and test documents
+        indexed by language code.
+        :param batch_size: int, number of samples per batch.
+        :param nepochs: int, number of max epochs to train the model.
+        :param gpus: int,  specifies how many GPUs to use per node. If False computation will take place on cpu.
+        :param n_jobs: int, number of concurrent workers.
+        :param stored_path: str, path to a pretrained model. If None the model will be trained from scratch.
+        """
         super().__init__()
         self.multilingualIndex = multilingualIndex
         self.nepochs = nepochs
@@ -271,6 +335,14 @@ class BertGen(ViewGen):
         return BertModel(output_size=output_size, stored_path=self.stored_path, gpus=self.gpus)
 
     def fit(self, lX, ly):
+        """
+        Train the Neural Network end-to-end.
+        lX and ly are not directly used. We rather get them from the multilingual index used in the instantiation
+        of the Dataset object (RecurrentDataset) in the GfunDataModule class.
+        :param lX: dict {lang: indexed documents}
+        :param ly: dict {lang: target vectors}
+        :return: self.
+        """
         print('# Fitting BertGen (M)...')
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
@@ -281,7 +353,11 @@ class BertGen(ViewGen):
         return self
 
     def transform(self, lX):
-        # lX is raw text data. It has to be first indexed via Bert Tokenizer.
+        """
+        Project documents to the common latent space. Output dimensionality is 768.
+        :param lX: dict {lang: indexed documents}
+        :return: documents projected to the common latent space.
+        """
         data = self.multilingualIndex.l_devel_raw_index()
         data = tokenize(data, max_len=512)
         self.model.to('cuda' if self.gpus else 'cpu')

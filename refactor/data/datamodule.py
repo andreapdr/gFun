@@ -88,14 +88,21 @@ class RecurrentDataset(Dataset):
 
 
 class RecurrentDataModule(pl.LightningDataModule):
-    def __init__(self, multilingualIndex, batchsize=64):
+    """
+    Pytorch Lightning Datamodule to be deployed with RecurrentGen.
+    https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
+    """
+    def __init__(self, multilingualIndex, batchsize=64, n_jobs=-1):
         """
-        Pytorch-lightning DataModule: https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
-        :param multilingualIndex:
-        :param batchsize:
+        Init RecurrentDataModule.
+        :param multilingualIndex: MultilingualIndex, it is a dictionary of training and test documents
+        indexed by language code.
+        :param batchsize: int, number of sample per batch.
+        :param n_jobs: int, number of concurrent workers to be deployed (i.e., parallelizing data loading).
         """
         self.multilingualIndex = multilingualIndex
         self.batchsize = batchsize
+        self.n_jobs = n_jobs
         super().__init__()
 
     def prepare_data(self, *args, **kwargs):
@@ -128,15 +135,15 @@ class RecurrentDataModule(pl.LightningDataModule):
                                                  lPad_index=self.multilingualIndex.l_pad())
 
     def train_dataloader(self):
-        return DataLoader(self.training_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
+        return DataLoader(self.training_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
                           collate_fn=self.training_dataset.collate_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
+        return DataLoader(self.val_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
                           collate_fn=self.val_dataset.collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
+        return DataLoader(self.test_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
                           collate_fn=self.test_dataset.collate_fn)
 
 
@@ -156,7 +163,18 @@ def tokenize(l_raw, max_len):
 
 
 class BertDataModule(RecurrentDataModule):
+    """
+    Pytorch Lightning Datamodule to be deployed with BertGen.
+    https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
+    """
     def __init__(self, multilingualIndex, batchsize=64, max_len=512):
+        """
+        Init BertDataModule.
+        :param multilingualIndex: MultilingualIndex, it is a dictionary of training and test documents
+        indexed by language code.
+        :param batchsize: int, number of sample per batch.
+        :param max_len: int, max number of token per document. Absolute cap is 512.
+        """
         super().__init__(multilingualIndex, batchsize)
         self.max_len = max_len
 
