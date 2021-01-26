@@ -5,8 +5,8 @@ from zipfile import ZipFile
 
 import numpy as np
 
-from util.file import download_file_if_not_exists
-from util.file import list_files
+from src.util.file import download_file_if_not_exists
+from src.util.file import list_files
 
 """
 RCV2's Nomenclature:

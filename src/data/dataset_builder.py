@@ -1,5 +1,4 @@
 import itertools
-import pickle
 import re
 from os.path import exists
 
@@ -12,10 +11,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
 
-from data.languages import NLTK_LANGMAP, RCV2_LANGS_WITH_NLTK_STEMMING
-from data.reader.jrcacquis_reader import *
-from data.reader.rcv_reader import fetch_RCV1, fetch_RCV2
-from data.text_preprocessor import NLTKStemTokenizer, preprocess_documents
+from src.data.languages import NLTK_LANGMAP, RCV2_LANGS_WITH_NLTK_STEMMING
+from src.data.reader.jrcacquis_reader import *
+from src.data.reader.rcv_reader import fetch_RCV1, fetch_RCV2
+from src.data.text_preprocessor import NLTKStemTokenizer, preprocess_documents
 
 
 class MultilingualDataset:

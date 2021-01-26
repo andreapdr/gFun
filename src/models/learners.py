@@ -7,7 +7,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 
-from util.standardizer import StandardizeTransformer
+from src.util.standardizer import StandardizeTransformer
 
 
 def get_learner(calibrate=False, kernel='linear', C=1):

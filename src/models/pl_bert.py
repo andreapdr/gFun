@@ -3,8 +3,8 @@ import torch
 from torch.optim.lr_scheduler import StepLR
 from transformers import BertForSequenceClassification, AdamW
 
-from util.common import define_pad_length, pad
-from util.pl_metrics import CustomF1, CustomK
+from src.util.common import define_pad_length, pad
+from src.util.pl_metrics import CustomF1, CustomK
 
 
 class BertModel(pl.LightningModule):

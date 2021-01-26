@@ -14,9 +14,9 @@ import rdflib
 from rdflib.namespace import RDF, SKOS
 from sklearn.datasets import get_data_home
 
-from data.languages import JRC_LANGS
-from data.languages import lang_set
-from util.file import download_file, list_dirs, list_files
+from src.data.languages import JRC_LANGS
+from src.data.languages import lang_set
+from src.util.file import download_file, list_dirs, list_files
 
 """
 JRC Acquis' Nomenclature:

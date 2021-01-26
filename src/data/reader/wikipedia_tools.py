@@ -11,7 +11,6 @@ from os.path import join
 from xml.sax.saxutils import escape
 
 import numpy as np
-
 from util.file import list_dirs, list_files
 
 policies = ["IN_ALL_LANGS", "IN_ANY_LANG"]

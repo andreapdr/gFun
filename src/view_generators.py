@@ -21,12 +21,12 @@ from time import time
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from data.datamodule import RecurrentDataModule, BertDataModule, tokenize
-from models.learners import *
-from models.pl_bert import BertModel
-from models.pl_gru import RecurrentModel
-from util.common import TfidfVectorizerMultilingual, _normalize
-from util.embeddings_manager import MuseLoader, XdotM, wce_matrix
+from src.data.datamodule import RecurrentDataModule, BertDataModule, tokenize
+from src.models.learners import *
+from src.models.pl_bert import BertModel
+from src.models.pl_gru import RecurrentModel
+from src.util.common import TfidfVectorizerMultilingual, _normalize
+from src.util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 
 
 class ViewGen(ABC):
@@ -232,7 +232,7 @@ class RecurrentGen(ViewGen):
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         self.multilingualIndex.embedding_matrices(self.pretrained, supervised=self.wce)
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='rnn', default_hp_metric=False)
         # self.logger = CSVLogger(save_dir='csv_logs', name='rnn_dev')
 
     def _init_model(self):
@@ -293,9 +293,9 @@ class RecurrentGen(ViewGen):
         data = self.multilingualIndex.l_devel_index()
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
-        time_init = time()
+        time_init = time.time()
         l_embeds = self.model.encode(data, l_pad, batch_size=256)
-        transform_time = round(time() - time_init, 3)
+        transform_time = round(time.time() - time_init, 3)
         print(f'Executed! Transform took: {transform_time}')
         return l_embeds
 
@@ -328,7 +328,7 @@ class BertGen(ViewGen):
         self.n_jobs = n_jobs
         self.stored_path = stored_path
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='bert', default_hp_metric=False)
 
     def _init_model(self):
         output_size = self.multilingualIndex.get_target_dim()
@@ -362,14 +362,12 @@ class BertGen(ViewGen):
         data = tokenize(data, max_len=512)
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
-        time_init = time()
+        time_init = time.time()
         l_emebds = self.model.encode(data, batch_size=64)
-        transform_time = round(time() - time_init, 3)
+        transform_time = round(time.time() - time_init, 3)
         print(f'Executed! Transform took: {transform_time}')
         return l_emebds
 
     def fit_transform(self, lX, ly):
         # we can assume that we have already indexed data for transform() since we are first calling fit()
         return self.fit(lX, ly).transform(lX)
-
-

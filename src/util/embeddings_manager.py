@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torchtext.vocab import Vectors
 
-from util.SIF_embed import remove_pc
+from src.util.SIF_embed import remove_pc
 
 
 class PretrainedEmbeddings(ABC):

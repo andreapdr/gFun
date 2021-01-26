@@ -1,12 +1,11 @@
 from argparse import ArgumentParser
 
-from data.dataset_builder import MultilingualDataset
-from funnelling import *
-from util.common import MultilingualIndex, get_params, get_method_name
-from util.evaluation import evaluate
-from util.results_csv import CSVlog
-from view_generators import *
-from time import time
+from src.data.dataset_builder import MultilingualDataset
+from src.funnelling import *
+from src.util.common import MultilingualIndex, get_params, get_method_name
+from src.util.evaluation import evaluate
+from src.util.results_csv import CSVlog
+from src.view_generators import *
 
 
 def main(args):
@@ -60,18 +59,17 @@ def main(args):
 
     # Training ---------------------------------------
     print('\n[Training Generalized Funnelling]')
-    time_init = time()
-    time_tr = time()
+    time_init = time.time()
     gfun.fit(lX, ly)
-    time_tr = round(time() - time_tr, 3)
+    time_tr = round(time.time() - time_init, 3)
     print(f'Training completed in {time_tr} seconds!')
 
     # Testing ----------------------------------------
     print('\n[Testing Generalized Funnelling]')
-    time_te = time()
+    time_te = time.time()
     ly_ = gfun.predict(lXte)
     l_eval = evaluate(ly_true=lyte, ly_pred=ly_)
-    time_te = round(time() - time_te, 3)
+    time_te = round(time.time() - time_te, 3)
     print(f'Testing completed in {time_te} seconds!')
 
     # Logging ---------------------------------------
@@ -101,7 +99,7 @@ def main(args):
                             notes='')
     print('Averages: MF1, mF1, MK, mK', np.round(np.mean(np.array(metrics), axis=0), 3))
 
-    overall_time = round(time() - time_init, 3)
+    overall_time = round(time.time() - time_init, 3)
     exit(f'\nExecuted in: {overall_time} seconds!')
 
 
@@ -112,7 +110,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-o', '--output', dest='csv_dir',
                         help='Result file (default ../csv_log/gfun_results.csv)', type=str,
-                        default='csv_logs/gfun/gfun_results.csv')
+                        default='../csv_logs/gfun/gfun_results.csv')
 
     parser.add_argument('-x', '--post_embedder', dest='post_embedder', action='store_true',
                         help='deploy posterior probabilities embedder to compute document embeddings',
@@ -138,7 +136,7 @@ if __name__ == '__main__':
                         help='Optimize SVMs C hyperparameter',
                         default=False)
 
-    parser.add_argument('-n', '--nepochs', dest='nepochs', type=str,
+    parser.add_argument('-n', '--nepochs', dest='nepochs', type=int,
                         help='Number of max epochs to train Recurrent embedder (i.e., -g)')
 
     parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int,

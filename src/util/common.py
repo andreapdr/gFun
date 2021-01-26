@@ -4,7 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize
 
-from util.embeddings_manager import supervised_embeddings_tfidf
+from src.util.embeddings_manager import supervised_embeddings_tfidf
 
 
 class TfidfVectorizerMultilingual:

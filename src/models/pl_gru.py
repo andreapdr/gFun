@@ -7,9 +7,9 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import StepLR
 from transformers import AdamW
 
-from models.helpers import init_embeddings
-from util.common import define_pad_length, pad
-from util.pl_metrics import CustomF1, CustomK
+from src.models.helpers import init_embeddings
+from src.util.common import define_pad_length, pad
+from src.util.pl_metrics import CustomF1, CustomK
 
 
 class RecurrentModel(pl.LightningModule):

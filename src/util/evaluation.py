@@ -1,7 +1,6 @@
-import numpy as np
 from joblib import Parallel, delayed
 
-from util.metrics import *
+from src.util.metrics import *
 
 
 def evaluation_metrics(y, y_):

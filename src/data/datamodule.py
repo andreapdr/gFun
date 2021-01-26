@@ -135,15 +135,15 @@ class RecurrentDataModule(pl.LightningDataModule):
                                                  lPad_index=self.multilingualIndex.l_pad())
 
     def train_dataloader(self):
-        return DataLoader(self.training_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
+        return DataLoader(self.training_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
                           collate_fn=self.training_dataset.collate_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
+        return DataLoader(self.val_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
                           collate_fn=self.val_dataset.collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batchsize, num_workers=self.n_jobs,
+        return DataLoader(self.test_dataset, batch_size=self.batchsize, num_workers=N_WORKERS,
                           collate_fn=self.test_dataset.collate_fn)
 
 
