@@ -6,6 +6,7 @@ from util.common import MultilingualIndex, get_params, get_method_name
 from util.evaluation import evaluate
 from util.results_csv import CSVlog
 from view_generators import *
+from time import time
 
 
 def main(args):
