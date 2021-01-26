@@ -42,11 +42,11 @@ def main(args):
 
     if args.gru_embedder:
         rnnEmbedder = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=args.gru_wce, batch_size=256,
-                                   nepochs=args.nepochs, gpus=args.gpus, n_jobs=args.n_jobs)
+                                   nepochs=args.nepochs_rnn, gpus=args.gpus, n_jobs=args.n_jobs)
         embedder_list.append(rnnEmbedder)
 
     if args.bert_embedder:
-        bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=10, gpus=args.gpus, n_jobs=args.n_jobs)
+        bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=args.nepochs_bert, gpus=args.gpus, n_jobs=args.n_jobs)
         embedder_list.append(bertEmbedder)
 
     # Init DocEmbedderList (i.e., first-tier learners or view generators) and metaclassifier
@@ -136,12 +136,17 @@ if __name__ == '__main__':
                         help='Optimize SVMs C hyperparameter',
                         default=False)
 
-    parser.add_argument('-n', '--nepochs', dest='nepochs', type=int,
-                        help='Number of max epochs to train Recurrent embedder (i.e., -g)')
-
     parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int,
                         help='Number of parallel jobs (default is -1, all)',
                         default=-1)
+
+    parser.add_argument('--nepochs_rnn', dest='nepochs_rnn', type=int,
+                        help='Number of max epochs to train Recurrent embedder (i.e., -g), default 150.',
+                        default=150)
+
+    parser.add_argument('--nepochs_bert', dest='nepochs_bert', type=int,
+                        help='Number of max epochs to train Bert model (i.e., -g), default 10',
+                        default=10)
 
     parser.add_argument('--muse_dir', dest='muse_dir', type=str,
                         help='Path to the MUSE polylingual word embeddings (default ../embeddings)',
