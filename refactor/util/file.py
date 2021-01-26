@@ -1,6 +1,5 @@
 from os import listdir, makedirs
 from os.path import isdir, isfile, join, exists, dirname
-#from sklearn.externals.six.moves import urllib
 import urllib
 from pathlib import Path
 
@@ -14,6 +13,7 @@ def download_file(url, archive_filename):
     urllib.request.urlretrieve(url, filename=archive_filename, reporthook=progress)
     print("")
 
+
 def download_file_if_not_exists(url, archive_path):
     if exists(archive_path): return
     makedirs_if_not_exist(dirname(archive_path))
@@ -25,20 +25,26 @@ def ls(dir, typecheck):
     el.sort()
     return el
 
+
 def list_dirs(dir):
     return ls(dir, typecheck=isdir)
+
 
 def list_files(dir):
     return ls(dir, typecheck=isfile)
 
+
 def makedirs_if_not_exist(path):
     if not exists(path): makedirs(path)
+
 
 def create_if_not_exist(path):
     if not exists(path): makedirs(path)
 
+
 def get_parent_name(path):
     return Path(path).parent
+
 
 def get_file_name(path):
     return Path(path).name

@@ -147,7 +147,6 @@ def tokenize(l_raw, max_len):
     :param max_len:
     :return:
     """
-    # TODO: check BertTokenizerFast https://huggingface.co/transformers/model_doc/bert.html#berttokenizerfast
     tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
     l_tokenized = {}
     for lang in l_raw.keys():

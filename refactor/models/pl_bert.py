@@ -161,7 +161,7 @@ class BertModel(pl.LightningModule):
                     else:
                         batch = lX[lang][i:i + batch_size]
                     max_pad_len = define_pad_length(batch)
-                    batch = pad(batch, pad_index='101', max_pad_length=max_pad_len)     # TODO: check pad index!
+                    batch = pad(batch, pad_index=self.bert.config.pad_token_id, max_pad_length=max_pad_len)
                     batch = torch.LongTensor(batch).to('cuda' if self.gpus else 'cpu')
                     _, output = self.forward(batch)
                     doc_embeds = output[-1][:, 0, :]

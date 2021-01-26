@@ -8,6 +8,7 @@ class CSVlog:
         self.file = file
         self.columns = ['method',
                         'setting',
+                        'optimc',
                         'sif',
                         'zscore',
                         'l2',
@@ -34,9 +35,9 @@ class CSVlog:
     def already_calculated(self, id):
         return (self.df['id'] == id).any()
 
-    def add_row(self, method, setting, sif, zscore, l2, dataset, time_tr, time_te, lang,
+    def add_row(self, method, setting, optimc, sif, zscore, l2, dataset, time_tr, time_te, lang,
                 macrof1, microf1, macrok=np.nan, microk=np.nan, notes=''):
-        s = pd.Series([method, setting,sif, zscore, l2, dataset, time_tr, time_te, lang,
+        s = pd.Series([method, setting, optimc, sif, zscore, l2, dataset, time_tr, time_te, lang,
                        macrof1, microf1, macrok, microk, notes],
                       index=self.columns)
         self.df = self.df.append(s, ignore_index=True)

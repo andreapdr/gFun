@@ -369,3 +369,16 @@ def get_params(optimc=False):
     c_range = [1e4, 1e3, 1e2, 1e1, 1, 1e-1]
     kernel = 'rbf'
     return [{'kernel': [kernel], 'C': c_range, 'gamma':['auto']}]
+
+
+def get_method_name(args):
+    _id = ''
+    _id_conf = [args.post_embedder, args.wce_embedder, args.muse_embedder, args.bert_embedder, args.gru_embedder]
+    _id_name = ['X', 'W', 'M', 'B', 'G']
+    for i, conf in enumerate(_id_conf):
+        if conf:
+            _id += _id_name[i]
+    _id = _id if not args.gru_wce else _id + '_wce'
+    _dataset_path = args.dataset.split('/')[-1].split('_')
+    dataset_id = _dataset_path[0] + _dataset_path[-1]
+    return _id, dataset_id
