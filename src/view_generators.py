@@ -26,10 +26,10 @@ from src.data.datamodule import RecurrentDataModule, BertDataModule, tokenize
 from src.models.learners import *
 from src.models.pl_bert import BertModel
 from src.models.pl_gru import RecurrentModel
-from src.util.common import TfidfVectorizerMultilingual, _normalize
+from src.util.common import TfidfVectorizerMultilingual, _normalize, index
 from src.util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 from src.util.file import create_if_not_exist
-# TODO: add model checkpointing and loading from checkpoint + training on validation after convergence is reached
+# TODO: (1) add model checkpointing and loading from checkpoint + training on validation after convergence is reached
 
 
 class ViewGen(ABC):
@@ -203,7 +203,7 @@ class RecurrentGen(ViewGen):
     the network internal state at the second feed-forward layer level. Training metrics are logged via TensorBoard.
     """
     def __init__(self, multilingualIndex, pretrained_embeddings, wce, batch_size=512, nepochs=50,
-                 gpus=0, n_jobs=-1, patience=5, stored_path=None):
+                 gpus=0, n_jobs=-1, patience=20, stored_path=None):
         """
         Init RecurrentGen.
         :param multilingualIndex: MultilingualIndex, it is a dictionary of training and test documents
@@ -237,8 +237,7 @@ class RecurrentGen(ViewGen):
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         self.multilingualIndex.embedding_matrices(self.pretrained, supervised=self.wce)
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='rnn', default_hp_metric=False)
-        # self.logger = CSVLogger(save_dir='csv_logs', name='rnn_dev')
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
 
@@ -297,14 +296,19 @@ class RecurrentGen(ViewGen):
         :param lX: dict {lang: indexed documents}
         :return: documents projected to the common latent space.
         """
+        data = {}
+        for lang in lX.keys():
+            indexed = index(data=lX[lang],
+                            vocab=self.multilingualIndex.l_index[lang].word2index,
+                            known_words=set(self.multilingualIndex.l_index[lang].word2index.keys()),
+                            analyzer=self.multilingualIndex.l_vectorizer.get_analyzer(lang),
+                            unk_index=self.multilingualIndex.l_index[lang].unk_index,
+                            out_of_vocabulary=self.multilingualIndex.l_index[lang].out_of_vocabulary)
+            data[lang] = indexed
         l_pad = self.multilingualIndex.l_pad()
-        data = self.multilingualIndex.l_devel_index()
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
-        # time_init = time.time()
         l_embeds = self.model.encode(data, l_pad, batch_size=256)
-        # transform_time = round(time.time() - time_init, 3)
-        # print(f'Executed! Transform took: {transform_time}')
         return l_embeds
 
     def fit_transform(self, lX, ly):
@@ -338,7 +342,7 @@ class BertGen(ViewGen):
         self.stored_path = stored_path
         self.model = self._init_model()
         self.patience = patience
-        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='bert', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
 
@@ -371,14 +375,10 @@ class BertGen(ViewGen):
         :param lX: dict {lang: indexed documents}
         :return: documents projected to the common latent space.
         """
-        data = self.multilingualIndex.l_devel_raw_index()
-        data = tokenize(data, max_len=512)
+        data = tokenize(lX, max_len=512)
         self.model.to('cuda' if self.gpus else 'cpu')
         self.model.eval()
-        # time_init = time.time()
         l_embeds = self.model.encode(data, batch_size=64)
-        # transform_time = round(time.time() - time_init, 3)
-        # print(f'Executed! Transform took: {transform_time}')
         return l_embeds
 
     def fit_transform(self, lX, ly):

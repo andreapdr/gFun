@@ -37,11 +37,12 @@ optional arguments:
   -b, --bert_embedder   deploy multilingual Bert to compute document embeddings
   -g, --gru_embedder    deploy a GRU in order to compute document embeddings
   -c, --c_optimize      optimize SVMs C hyperparameter
-  -j, --n_jobs          number of parallel jobs (default is -1, all)
+  -j, --n_jobs          number of parallel jobs, default is -1 i.e., all 
   --nepochs_rnn         number of max epochs to train Recurrent embedder (i.e., -g), default 150
   --nepochs_bert        number of max epochs to train Bert model (i.e., -g), default 10
   --muse_dir            path to the MUSE polylingual word embeddings (default ../embeddings)
   --gru_wce             deploy WCE embedding as embedding layer of the GRU View Generator
+  --patience_rnn        set early stop patience for the RecurrentGen, default 50
   --gru_dir             set the path to a pretrained GRU model (i.e., -g view generator)
   --bert_dir            set the path to a pretrained mBERT model (i.e., -b view generator)
   --gpus                specifies how many GPUs to use per node

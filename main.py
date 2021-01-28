@@ -15,7 +15,7 @@ def main(args):
     print('Running generalized funnelling...')
 
     data = MultilingualDataset.load(args.dataset)
-    data.set_view(languages=['it', 'fr'])
+    # data.set_view(languages=['it', 'da'])
     data.show_dimensions()
     lX, ly = data.training()
     lXte, lyte = data.test()
@@ -42,11 +42,14 @@ def main(args):
 
     if args.gru_embedder:
         rnnEmbedder = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=args.gru_wce, batch_size=256,
-                                   nepochs=args.nepochs_rnn, gpus=args.gpus, n_jobs=args.n_jobs)
+                                   nepochs=args.nepochs_rnn, patience=args.patience_rnn, gpus=args.gpus,
+                                   n_jobs=args.n_jobs)
         embedder_list.append(rnnEmbedder)
 
     if args.bert_embedder:
-        bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=args.nepochs_bert, gpus=args.gpus, n_jobs=args.n_jobs)
+        bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=args.nepochs_bert, gpus=args.gpus,
+                               n_jobs=args.n_jobs)
+        bertEmbedder.transform(lX)
         embedder_list.append(bertEmbedder)
 
     # Init DocEmbedderList (i.e., first-tier learners or view generators) and metaclassifier
@@ -137,20 +140,24 @@ if __name__ == '__main__':
                         default=False)
 
     parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int, metavar='',
-                        help='Number of parallel jobs (default is -1, all)',
+                        help='number of parallel jobs (default is -1, all)',
                         default=-1)
 
     parser.add_argument('--nepochs_rnn', dest='nepochs_rnn', type=int, metavar='',
-                        help='Number of max epochs to train Recurrent embedder (i.e., -g), default 150',
+                        help='number of max epochs to train Recurrent embedder (i.e., -g), default 150',
                         default=150)
 
     parser.add_argument('--nepochs_bert', dest='nepochs_bert', type=int, metavar='',
-                        help='Number of max epochs to train Bert model (i.e., -g), default 10',
+                        help='number of max epochs to train Bert model (i.e., -g), default 10',
                         default=10)
 
+    parser.add_argument('--patience_rnn', dest='patience_rnn', type=int, metavar='',
+                        help='set early stop patience for the RecurrentGen, default 50',
+                        default=50)
+
     parser.add_argument('--muse_dir', dest='muse_dir', type=str, metavar='',
-                        help='Path to the MUSE polylingual word embeddings (default ../embeddings)',
-                        default='../embeddings')
+                        help='Path to the MUSE polylingual word embeddings (default embeddings/)',
+                        default='embeddings/')
 
     parser.add_argument('--gru_wce', dest='gru_wce', action='store_true',
                         help='Deploy WCE embedding as embedding layer of the GRU View Generator',
