@@ -46,7 +46,6 @@ optional arguments:
   --batch_bert          set batchsize for the BertGen, default 4
   --muse_dir            path to the MUSE polylingual word embeddings (default ../embeddings)
   --gru_wce             deploy WCE embedding as embedding layer of the GRU View Generator
-  --patience_rnn        set early stop patience for the RecurrentGen, default 50
   --rnn_dir             set the path to a pretrained RNN model (i.e., -g view generator)
   --bert_dir            set the path to a pretrained mBERT model (i.e., -b view generator)
   --gpus                specifies how many GPUs to use per node
