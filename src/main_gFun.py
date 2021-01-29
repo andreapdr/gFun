@@ -87,8 +87,9 @@ if __name__ == '__main__':
         NB: --allprob won't have any effect on this View Gen since output is already encoded as post prob
         """
         op.gru_path = '/home/andreapdr/funneling_pdr/checkpoint/gru_viewgen_-rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle'    # TODO DEBUG
+        op.gru_path = None
         rnn_embedder = RecurrentEmbedder(pretrained=op.gruMUSE, supervised=op.gruWCE, multilingual_dataset=data,
-                                         options=op, model_path=op.gru_path)
+                                         options=op, model_path=op.gru_path, we_path=op.we_path)
         doc_embedder.append(rnn_embedder)
 
     if op.mbert:
