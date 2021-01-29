@@ -40,10 +40,14 @@ optional arguments:
   -j, --n_jobs          number of parallel jobs, default is -1 i.e., all 
   --nepochs_rnn         number of max epochs to train Recurrent embedder (i.e., -g), default 150
   --nepochs_bert        number of max epochs to train Bert model (i.e., -g), default 10
+  --patience_rnn        set early stop patience for the RecurrentGen, default 25
+  --patience_bert       set early stop patience for the BertGen, default 5
+  --batch_rnn           set batchsize for the RecurrentGen, default 64
+  --batch_bert          set batchsize for the BertGen, default 4
   --muse_dir            path to the MUSE polylingual word embeddings (default ../embeddings)
   --gru_wce             deploy WCE embedding as embedding layer of the GRU View Generator
   --patience_rnn        set early stop patience for the RecurrentGen, default 50
-  --gru_dir             set the path to a pretrained GRU model (i.e., -g view generator)
+  --rnn_dir             set the path to a pretrained RNN model (i.e., -g view generator)
   --bert_dir            set the path to a pretrained mBERT model (i.e., -b view generator)
   --gpus                specifies how many GPUs to use per node
 ```

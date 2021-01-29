@@ -41,14 +41,14 @@ def main(args):
         embedder_list.append(wceEmbedder)
 
     if args.gru_embedder:
-        rnnEmbedder = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=args.gru_wce, batch_size=256,
-                                   nepochs=args.nepochs_rnn, patience=args.patience_rnn, gpus=args.gpus,
-                                   n_jobs=args.n_jobs)
+        rnnEmbedder = RecurrentGen(multilingualIndex, pretrained_embeddings=lMuse, wce=args.gru_wce,
+                                   batch_size=args.batch_rnn, nepochs=args.nepochs_rnn, patience=args.patience_rnn,
+                                   gpus=args.gpus, n_jobs=args.n_jobs)
         embedder_list.append(rnnEmbedder)
 
     if args.bert_embedder:
-        bertEmbedder = BertGen(multilingualIndex, batch_size=4, nepochs=args.nepochs_bert, gpus=args.gpus,
-                               n_jobs=args.n_jobs)
+        bertEmbedder = BertGen(multilingualIndex, batch_size=args.batch_bert, nepochs=args.nepochs_bert,
+                               patience=args.patience_bert, gpus=args.gpus, n_jobs=args.n_jobs)
         bertEmbedder.transform(lX)
         embedder_list.append(bertEmbedder)
 
@@ -152,8 +152,20 @@ if __name__ == '__main__':
                         default=10)
 
     parser.add_argument('--patience_rnn', dest='patience_rnn', type=int, metavar='',
-                        help='set early stop patience for the RecurrentGen, default 50',
-                        default=50)
+                        help='set early stop patience for the RecurrentGen, default 25',
+                        default=25)
+
+    parser.add_argument('--patience_bert', dest='patience_bert', type=int, metavar='',
+                        help='set early stop patience for the BertGen, default 5',
+                        default=5)
+
+    parser.add_argument('--batch_rnn', dest='batch_rnn', type=int, metavar='',
+                        help='set batchsize for the RecurrentGen, default 64',
+                        default=64)
+
+    parser.add_argument('--batch_bert', dest='batch_bert', type=int, metavar='',
+                        help='set batchsize for the BertGen, default 4',
+                        default=4)
 
     parser.add_argument('--muse_dir', dest='muse_dir', type=str, metavar='',
                         help='Path to the MUSE polylingual word embeddings (default embeddings/)',
@@ -163,8 +175,8 @@ if __name__ == '__main__':
                         help='Deploy WCE embedding as embedding layer of the GRU View Generator',
                         default=False)
 
-    parser.add_argument('--gru_dir', dest='gru_dir', type=str, metavar='',
-                        help='Set the path to a pretrained GRU model (i.e., -g view generator)',
+    parser.add_argument('--rnn_dir', dest='rnn_dir', type=str, metavar='',
+                        help='Set the path to a pretrained RNN model (i.e., -g view generator)',
                         default=None)
 
     parser.add_argument('--bert_dir', dest='bert_dir', type=str, metavar='',
