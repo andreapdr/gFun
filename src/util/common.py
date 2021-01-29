@@ -29,8 +29,9 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
     unk_count = 0
     knw_count = 0
     out_count = 0
-    pbar = tqdm(data, desc=f'indexing documents')
-    for text in pbar:
+    # pbar = tqdm(data, desc=f'indexing documents')
+    # for text in pbar:
+    for text in data:
         words = analyzer(text)
         index = []
         for word in words:
@@ -48,8 +49,8 @@ def index(data, vocab, known_words, analyzer, unk_index, out_of_vocabulary):
             index.append(idx)
         indexes.append(index)
         knw_count += len(index)
-        pbar.set_description(f'[unk = {unk_count}/{knw_count}={(100.*unk_count/knw_count):.2f}%]'
-                             f'[out = {out_count}/{knw_count}={(100.*out_count/knw_count):.2f}%]')
+        # pbar.set_description(f'[unk = {unk_count}/{knw_count}={(100.*unk_count/knw_count):.2f}%]'
+        #                      f'[out = {out_count}/{knw_count}={(100.*out_count/knw_count):.2f}%]')
     return indexes
 
 
