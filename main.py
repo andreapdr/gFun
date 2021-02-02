@@ -112,8 +112,8 @@ if __name__ == '__main__':
     parser.add_argument('dataset', help='Path to the dataset')
 
     parser.add_argument('-o', '--output', dest='csv_dir', metavar='',
-                        help='Result file (default ../csv_logs/gfun/gfun_results.csv)', type=str,
-                        default='../csv_logs/gfun/gfun_results.csv')
+                        help='Result file (default csv_logs/gfun/gfun_results.csv)', type=str,
+                        default='csv_logs/gfun/gfun_results.csv')
 
     parser.add_argument('-x', '--post_embedder', dest='post_embedder', action='store_true',
                         help='deploy posterior probabilities embedder to compute document embeddings',

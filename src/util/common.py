@@ -378,7 +378,7 @@ def get_method_name(args):
     for i, conf in enumerate(_id_conf):
         if conf:
             _id += _id_name[i]
-    _id = _id if not args.gru_wce else _id + '_wce'
+    _id = _id if not args.rnn_wce else _id + '_wce'
     _dataset_path = args.dataset.split('/')[-1].split('_')
     dataset_id = _dataset_path[0] + _dataset_path[-1]
     return _id, dataset_id
