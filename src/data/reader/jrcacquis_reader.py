@@ -1,19 +1,22 @@
 from __future__ import print_function
-import os, sys
-from os.path import join
+
+import os
+import pickle
+import sys
 import tarfile
 import xml.etree.ElementTree as ET
-from sklearn.datasets import get_data_home
-import pickle
-from util.file import download_file, list_dirs, list_files
+import zipfile
+from collections import Counter
+from os.path import join
+from random import shuffle
+
 import rdflib
 from rdflib.namespace import RDF, SKOS
-from rdflib import URIRef
-import zipfile
-from data.languages import JRC_LANGS
-from collections import Counter
-from random import shuffle
-from data.languages import lang_set
+from sklearn.datasets import get_data_home
+
+from src.data.languages import JRC_LANGS
+from src.data.languages import lang_set
+from src.util.file import download_file, list_dirs, list_files
 
 """
 JRC Acquis' Nomenclature:

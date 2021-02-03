@@ -3,25 +3,29 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
-
-def init_embeddings(pretrained, vocab_size, learnable_length, device='cuda'):
+def init_embeddings(pretrained, vocab_size, learnable_length):
+    """
+    Compute the embedding matrix
+    :param pretrained:
+    :param vocab_size:
+    :param learnable_length:
+    :return:
+    """
     pretrained_embeddings = None
     pretrained_length = 0
     if pretrained is not None:
         pretrained_length = pretrained.shape[1]
         assert pretrained.shape[0] == vocab_size, 'pre-trained matrix does not match with the vocabulary size'
         pretrained_embeddings = nn.Embedding(vocab_size, pretrained_length)
+        # requires_grad=False sets the embedding layer as NOT trainable
         pretrained_embeddings.weight = nn.Parameter(pretrained, requires_grad=False)
-        # pretrained_embeddings.to(device)
 
     learnable_embeddings = None
     if learnable_length > 0:
         learnable_embeddings = nn.Embedding(vocab_size, learnable_length)
-        # learnable_embeddings.to(device)
 
     embedding_length = learnable_length + pretrained_length
     assert embedding_length > 0, '0-size embeddings'
-
     return pretrained_embeddings, learnable_embeddings, embedding_length
 
 

@@ -1,21 +1,21 @@
 import os
-import pandas as pd
-import numpy as np
 
-class PolylingualClassificationResults:
+import numpy as np
+import pandas as pd
+
+
+class CSVlog:
     def __init__(self, file, autoflush=True, verbose=False):
         self.file = file
         self.columns = ['method',
-                        'learner',
-                        'optimp',
+                        'setting',
+                        'optimc',
                         'sif',
                         'zscore',
                         'l2',
-                        'wescaler',
-                        'pca',
-                        'id',
                         'dataset',
-                        'time',
+                        'time_tr',
+                        'time_te',
                         'lang',
                         'macrof1',
                         'microf1',
@@ -36,8 +36,11 @@ class PolylingualClassificationResults:
     def already_calculated(self, id):
         return (self.df['id'] == id).any()
 
-    def add_row(self, method, learner, optimp, sif, zscore, l2, wescaler, pca, id, dataset, time, lang, macrof1, microf1, macrok=np.nan, microk=np.nan, notes=''):
-        s = pd.Series([method, learner, optimp,sif, zscore, l2, wescaler, pca, id, dataset, time, lang, macrof1, microf1, macrok, microk, notes], index=self.columns)
+    def add_row(self, method, setting, optimc, sif, zscore, l2, dataset, time_tr, time_te, lang,
+                macrof1, microf1, macrok=np.nan, microk=np.nan, notes=''):
+        s = pd.Series([method, setting, optimc, sif, zscore, l2, dataset, time_tr, time_te, lang,
+                       macrof1, microf1, macrok, microk, notes],
+                      index=self.columns)
         self.df = self.df.append(s, ignore_index=True)
         if self.autoflush: self.flush()
         self.tell(s.to_string())
@@ -46,4 +49,5 @@ class PolylingualClassificationResults:
         self.df.to_csv(self.file, index=False, sep='\t')
 
     def tell(self, msg):
-        if self.verbose: print(msg)
+        if self.verbose:
+            print(msg)

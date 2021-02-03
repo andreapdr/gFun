@@ -1,8 +1,9 @@
 import math
+
 import numpy as np
-from scipy.stats import t
 from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix, csc_matrix
+from scipy.stats import t
 
 
 def get_probs(tpr, fpr, pc):

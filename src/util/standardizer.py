@@ -1,15 +1,20 @@
 import numpy as np
 
-class StandardizeTransformer:
 
+class StandardizeTransformer:
     def __init__(self, axis=0, range=None):
+        """
+
+        :param axis:
+        :param range:
+        """
         assert range is None or isinstance(range, slice), 'wrong format for range, should either be None or a slice'
         self.axis = axis
         self.yetfit = False
         self.range = range
 
     def fit(self, X):
-        print('fitting Standardizer...')
+        print('Applying z-score standardization...')
         std=np.std(X, axis=self.axis, ddof=1)
         self.std = np.clip(std, 1e-5, None)
         self.mean = np.mean(X, axis=self.axis)

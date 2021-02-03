@@ -1,9 +1,24 @@
-import numpy as np
 import time
-from scipy.sparse import issparse
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.model_selection import GridSearchCV
+
+import numpy as np
 from joblib import Parallel, delayed
+from scipy.sparse import issparse
+from sklearn.model_selection import GridSearchCV
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import SVC
+
+from src.util.standardizer import StandardizeTransformer
+
+
+def get_learner(calibrate=False, kernel='linear', C=1):
+    """
+    instantiate scikit Support Vector Classifier
+    :param calibrate: boolean, whether to return posterior probabilities or not
+    :param kernel: string,kernel to be applied to the SVC
+    :param C: int or dict {'C': list of integer}, Regularization parameter
+    :return: Support Vector Classifier
+    """
+    return SVC(kernel=kernel, probability=calibrate, cache_size=1000, C=C, random_state=1, gamma='auto', verbose=False)
 
 
 def _sort_if_sparse(X):
@@ -13,7 +28,7 @@ def _sort_if_sparse(X):
 
 def _joblib_transform_multiling(transformer, lX, n_jobs=-1):
     if n_jobs == 1:
-        return {lang:transformer(lX[lang]) for lang in lX.keys()}
+        return {lang: transformer(lX[lang]) for lang in lX.keys()}
     else:
         langs = list(lX.keys())
         transformations = Parallel(n_jobs=n_jobs)(delayed(transformer)(lX[lang]) for lang in langs)
@@ -25,11 +40,11 @@ class TrivialRejector:
         self.cats = y.shape[1]
         return self
 
-    def decision_function(self, X): return np.zeros((X.shape[0],self.cats))
+    def decision_function(self, X): return np.zeros((X.shape[0], self.cats))
 
-    def predict(self, X): return np.zeros((X.shape[0],self.cats))
+    def predict(self, X): return np.zeros((X.shape[0], self.cats))
 
-    def predict_proba(self, X): return np.zeros((X.shape[0],self.cats))
+    def predict_proba(self, X): return np.zeros((X.shape[0], self.cats))
 
     def best_params(self): return {}
 
@@ -38,6 +53,7 @@ class NaivePolylingualClassifier:
     """
     Is a mere set of independet MonolingualClassifiers
     """
+
     def __init__(self, base_learner, parameters=None, n_jobs=-1):
         self.base_learner = base_learner
         self.parameters = parameters
@@ -58,10 +74,11 @@ class NaivePolylingualClassifier:
             _sort_if_sparse(lX[lang])
 
         models = Parallel(n_jobs=self.n_jobs)\
-            (delayed(MonolingualClassifier(self.base_learner, parameters=self.parameters).fit)((lX[lang]),ly[lang]) for lang in langs)
+            (delayed(MonolingualClassifier(self.base_learner, parameters=self.parameters).fit)((lX[lang]), ly[lang]) for
+             lang in langs)
 
         self.model = {lang: models[i] for i, lang in enumerate(langs)}
-        self.empty_categories = {lang:self.model[lang].empty_categories for lang in langs}
+        self.empty_categories = {lang: self.model[lang].empty_categories for lang in langs}
         self.time = time.time() - tinit
         return self
 
@@ -72,9 +89,9 @@ class NaivePolylingualClassifier:
         """
         assert self.model is not None, 'predict called before fit'
         assert set(lX.keys()).issubset(set(self.model.keys())), 'unknown languages requested in decision function'
-        langs=list(lX.keys())
+        langs = list(lX.keys())
         scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].decision_function)(lX[lang]) for lang in langs)
-        return {lang:scores[i] for i,lang in enumerate(langs)}
+        return {lang: scores[i] for i, lang in enumerate(langs)}
 
     def predict_proba(self, lX):
         """
@@ -83,9 +100,10 @@ class NaivePolylingualClassifier:
         """
         assert self.model is not None, 'predict called before fit'
         assert set(lX.keys()).issubset(set(self.model.keys())), 'unknown languages requested in decision function'
-        langs=list(lX.keys())
-        scores = Parallel(n_jobs=self.n_jobs, max_nbytes=None)(delayed(self.model[lang].predict_proba)(lX[lang]) for lang in langs)
-        return {lang:scores[i] for i,lang in enumerate(langs)}
+        langs = list(lX.keys())
+        scores = Parallel(n_jobs=self.n_jobs, max_nbytes=None)(
+            delayed(self.model[lang].predict_proba)(lX[lang]) for lang in langs)
+        return {lang: scores[i] for i, lang in enumerate(langs)}
 
     def predict(self, lX):
         """
@@ -95,14 +113,14 @@ class NaivePolylingualClassifier:
         assert self.model is not None, 'predict called before fit'
         assert set(lX.keys()).issubset(set(self.model.keys())), 'unknown languages requested in predict'
         if self.n_jobs == 1:
-            return {lang:self.model[lang].transform(lX[lang]) for lang in lX.keys()}
+            return {lang: self.model[lang].transform(lX[lang]) for lang in lX.keys()}
         else:
             langs = list(lX.keys())
             scores = Parallel(n_jobs=self.n_jobs)(delayed(self.model[lang].predict)(lX[lang]) for lang in langs)
             return {lang: scores[i] for i, lang in enumerate(langs)}
 
     def best_params(self):
-        return {l:model.best_params() for l,model in self.model.items()}
+        return {lang: model.best_params() for lang, model in self.model.items()}
 
 
 class MonolingualClassifier:
@@ -117,14 +135,13 @@ class MonolingualClassifier:
     def fit(self, X, y):
         if X.shape[0] == 0:
             print('Warning: X has 0 elements, a trivial rejector will be created')
-            self.model = TrivialRejector().fit(X,y)
+            self.model = TrivialRejector().fit(X, y)
             self.empty_categories = np.arange(y.shape[1])
             return self
 
         tinit = time.time()
         _sort_if_sparse(X)
-        self.empty_categories = np.argwhere(np.sum(y, axis=0)==0).flatten()
-
+        self.empty_categories = np.argwhere(np.sum(y, axis=0) == 0).flatten()
         # multi-class format
         if len(y.shape) == 2:
             if self.parameters is not None:
@@ -142,13 +159,12 @@ class MonolingualClassifier:
             self.model = GridSearchCV(self.model, param_grid=self.parameters, refit=True, cv=5, n_jobs=self.n_jobs,
                                       error_score=0, verbose=10)
 
-        # print(f'fitting: {self.model} on matrices of shape X={X.shape} Y={y.shape}')
         print(f'fitting: Mono-lingual Classifier on matrices of shape X={X.shape} Y={y.shape}')
         self.model.fit(X, y)
         if isinstance(self.model, GridSearchCV):
             self.best_params_ = self.model.best_params_
             print('best parameters: ', self.best_params_)
-        self.time=time.time()-tinit
+        self.time = time.time() - tinit
         return self
 
     def decision_function(self, X):
@@ -169,3 +185,40 @@ class MonolingualClassifier:
 
     def best_params(self):
         return self.best_params_
+
+
+class MetaClassifier:
+
+    def __init__(self, meta_learner, meta_parameters=None, n_jobs=-1, standardize_range=None):
+        self.n_jobs = n_jobs
+        self.model = MonolingualClassifier(base_learner=meta_learner, parameters=meta_parameters, n_jobs=n_jobs)
+        self.standardize_range = standardize_range
+
+    def fit(self, lZ, ly):
+        tinit = time.time()
+        Z, y = self.stack(lZ, ly)
+
+        self.standardizer = StandardizeTransformer(range=self.standardize_range)
+        Z = self.standardizer.fit_transform(Z)
+
+        print('fitting the Z-space of shape={}'.format(Z.shape))
+        self.model.fit(Z, y)
+        self.time = time.time() - tinit
+
+    def stack(self, lZ, ly=None):
+        langs = list(lZ.keys())
+        Z = np.vstack([lZ[lang] for lang in langs])
+        if ly is not None:
+            y = np.vstack([ly[lang] for lang in langs])
+            return Z, y
+        else:
+            return Z
+
+    def predict(self, lZ):
+        lZ = _joblib_transform_multiling(self.standardizer.transform, lZ, n_jobs=self.n_jobs)
+        return _joblib_transform_multiling(self.model.predict, lZ, n_jobs=self.n_jobs)
+
+    def predict_proba(self, lZ):
+        lZ = _joblib_transform_multiling(self.standardizer.transform, lZ, n_jobs=self.n_jobs)
+        return _joblib_transform_multiling(self.model.predict_proba, lZ, n_jobs=self.n_jobs)
+
