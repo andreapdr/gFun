@@ -54,10 +54,11 @@ def main(args):
     # Init DocEmbedderList (i.e., first-tier learners or view generators) and metaclassifier
     docEmbedders = DocEmbedderList(embedder_list=embedder_list, probabilistic=True)
     meta = MetaClassifier(meta_learner=get_learner(calibrate=False, kernel='rbf'),
-                          meta_parameters=get_params(optimc=args.optimc))
+                          meta_parameters=get_params(optimc=args.optimc),
+                          n_jobs=args.n_jobs)
 
     # Init Funnelling Architecture
-    gfun = Funnelling(first_tier=docEmbedders, meta_classifier=meta)
+    gfun = Funnelling(first_tier=docEmbedders, meta_classifier=meta, n_jobs=args.n_jobs)
 
     # Training ---------------------------------------
     print('\n[Training Generalized Funnelling]')

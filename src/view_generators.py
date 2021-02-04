@@ -361,7 +361,7 @@ class BertGen(ViewGen):
         :param ly: dict {lang: target vectors}
         :return: self.
         """
-        print('# Fitting BertGen (M)...')
+        print('# Fitting BertGen (B)...')
         create_if_not_exist(self.logger.save_dir)
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
