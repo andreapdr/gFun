@@ -18,6 +18,7 @@ This module contains the view generators that take care of computing the view sp
 from abc import ABC, abstractmethod
 # from time import time
 
+import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -241,6 +242,10 @@ class RecurrentGen(ViewGen):
         self.logger = TensorBoardLogger(save_dir='../tb_logs', name='rnn', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
+
+        # modifying EarlyStopping global var in order to compute >= with respect to the best score
+        self.early_stop_callback.mode_dict['max'] = torch.ge
+
         self.lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     def _init_model(self):
@@ -347,6 +352,9 @@ class BertGen(ViewGen):
         self.logger = TensorBoardLogger(save_dir='../tb_logs', name='bert', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
+
+        # modifying EarlyStopping global var in order to compute >= with respect to the best score
+        self.early_stop_callback.mode_dict['max'] = torch.ge
 
     def _init_model(self):
         output_size = self.multilingualIndex.get_target_dim()

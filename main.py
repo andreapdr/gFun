@@ -71,7 +71,7 @@ def main(args):
     print('\n[Testing Generalized Funnelling]')
     time_te = time.time()
     ly_ = gfun.predict(lXte)
-    l_eval = evaluate(ly_true=lyte, ly_pred=ly_)
+    l_eval = evaluate(ly_true=lyte, ly_pred=ly_, n_jobs=args.n_jobs)
     time_te = round(time.time() - time_te, 3)
     print(f'Testing completed in {time_te} seconds!')
 
