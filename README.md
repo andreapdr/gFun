@@ -27,95 +27,53 @@ These scripts can be run with different command line arguments to reproduce all 
 
 Run it with _-h_ or _--help_ to show this help.
 
-```
-Usage: main_multimodal_cls.py [options]
+## Usage
+```commandline
+usage: main.py [-h] [-o CSV_DIR] [-x] [-w] [-m] [-b] [-g] [-c] [-n NEPOCHS]
+               [-j N_JOBS] [--muse_dir MUSE_DIR] [--gru_wce]
+               [--gru_dir GRU_DIR] [--bert_dir BERT_DIR] [--gpus GPUS]
+               dataset
 
-Options:
-  -h, --help            show this help message and exit
-  -o OUTPUT, --output=OUTPUT
-                        Result file
-  -P, --posteriors      Add posterior probabilities to the document embedding
-                        representation
-  -S, --supervised      Add supervised (Word-Class Embeddings) to the document
-                        embedding representation
-  -U, --pretrained      Add pretrained MUSE embeddings to the document
-                        embedding representation
-  --l2                  Activates l2 normalization as a post-processing for
-                        the document embedding views
-  --allprob             All views are generated as posterior probabilities.
-                        This affects the supervised and pretrained embeddings,
-                        for which a calibrated classifier is generated, which
-                        generates the posteriors
-  --feat-weight=FEAT_WEIGHT
-                        Term weighting function to weight the averaged
-                        embeddings
-  -w WE_PATH, --we-path=WE_PATH
-                        Path to the MUSE polylingual word embeddings
-  -s SET_C, --set_c=SET_C
-                        Set the C parameter
-  -c, --optimc          Optimize hyperparameters
-  -j N_JOBS, --n_jobs=N_JOBS
-                        Number of parallel jobs (default is -1, all)
-  -p MAX_LABELS_S, --pca=MAX_LABELS_S
-                        If smaller than number of target classes, PCA will be
-                        applied to supervised matrix.
-  -r, --remove-pc       Remove common component when computing dot product of
-                        word embedding matrices
-  -z, --zscore          Z-score normalize matrices (WCE and MUSE)
-  -a, --agg             Set aggregation function of the common Z-space to
-                        average (Default: concatenation)
+Run generalized funnelling, A. Moreo, A. Pedrotti and F. Sebastiani (2020).
 
-```
-
-```
-Usage: main_deep_learning.py [options]
-
-Options:
- positional arguments:
-  datasetpath           path to the pickled dataset
+positional arguments:
+  dataset               Path to the dataset
 
 optional arguments:
   -h, --help            show this help message and exit
-  --batch-size int      input batch size (default: 100)
-  --batch-size-test int
-                        batch size for testing (default: 250)
-  --nepochs int         number of epochs (default: 200)
-  --patience int        patience for early-stop (default: 10)
-  --plotmode            in plot mode executes a long run in order to generate
-                        enough data to produce trend plots (test-each should
-                        be >0. This mode is used to produce plots, and does
-                        not perform an evaluation on the test set.
-  --hidden int          hidden lstm size (default: 512)
-  --lr float            learning rate (default: 1e-3)
-  --weight_decay float  weight decay (default: 0)
-  --sup-drop [0.0, 1.0]
-                        dropout probability for the supervised matrix
-                        (default: 0.5)
-  --seed int            random seed (default: 1)
-  --svm-max-docs int    maximum number of documents by language used to train
-                        the calibrated SVMs (only used if --posteriors is
-                        active)
-  --log-interval int    how many batches to wait before printing training
-                        status
-  --log-file str        path to the log csv file
-  --test-each int       how many epochs to wait before invoking test (default:
-                        0, only at the end)
-  --checkpoint-dir str  path to the directory containing checkpoints
-  --net str             net, one in {'rnn'}
-  --pretrained          use MUSE pretrained embeddings
-  --supervised          use supervised embeddings
-  --posteriors          concatenate posterior probabilities to doc embeddings
-  --learnable int       dimension of the learnable embeddings (default 0)
-  --val-epochs int      number of training epochs to perform on the validation
-                        set once training is over (default 1)
-  --we-path str         path to MUSE pretrained embeddings
-  --max-label-space int
-                        larger dimension allowed for the feature-label
-                        embedding (if larger, then PCA with this number of
-                        components is applied (default 300)
-  --force               do not check if this experiment has already been run
-  --tunable             pretrained embeddings are tunable from the begining
-                        (default False, i.e., static)
-
+  -o, --output          result file (default ../csv_logs/gfun/gfun_results.csv)
+  -x, --post_embedder   deploy posterior probabilities embedder to compute document embeddings
+  -w, --wce_embedder    deploy (supervised) Word-Class embedder to the compute document embeddings
+  -m, --muse_embedder   deploy (pretrained) MUSE embedder to compute document embeddings
+  -b, --bert_embedder   deploy multilingual Bert to compute document embeddings
+  -g, --gru_embedder    deploy a GRU in order to compute document embeddings
+  -c, --c_optimize      optimize SVMs C hyperparameter
+  -j, --n_jobs          number of parallel jobs, default is -1 i.e., all 
+  --nepochs_rnn         number of max epochs to train Recurrent embedder (i.e., -g), default 150
+  --nepochs_bert        number of max epochs to train Bert model (i.e., -g), default 10
+  --patience_rnn        set early stop patience for the RecurrentGen, default 25
+  --patience_bert       set early stop patience for the BertGen, default 5
+  --batch_rnn           set batchsize for the RecurrentGen, default 64
+  --batch_bert          set batchsize for the BertGen, default 4
+  --muse_dir            path to the MUSE polylingual word embeddings (default ../embeddings)
+  --gru_wce             deploy WCE embedding as embedding layer of the GRU View Generator
+  --rnn_dir             set the path to a pretrained RNN model (i.e., -g view generator)
+  --bert_dir            set the path to a pretrained mBERT model (i.e., -b view generator)
+  --gpus                specifies how many GPUs to use per node
 ```
 
+## Requirements
+```commandline
+transformers==2.11.0
+pandas==0.25.3
+numpy==1.17.4
+joblib==0.14.0
+tqdm==4.50.2
+pytorch_lightning==1.1.2
+torch==1.3.1
+nltk==3.4.5
+scipy==1.3.3
+rdflib==4.2.2
+torchtext==0.4.0
+scikit_learn==0.24.1
+```
