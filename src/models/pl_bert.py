@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from torch.optim.lr_scheduler import StepLR
-from transformers import BertForSequenceClassification, AdamW
+from transformers import BertForSequenceClassification, AdamW, BertConfig
 
 from src.util.common import define_pad_length, pad
 from src.util.pl_metrics import CustomF1, CustomK
@@ -30,9 +30,10 @@ class BertModel(pl.LightningModule):
         self.lang_microK = CustomF1(num_classes=output_size, average='micro', device=self.gpus)
 
         if stored_path:
+            config = BertConfig.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True,
+                                                num_labels=output_size)
             self.bert = BertForSequenceClassification.from_pretrained(stored_path,
-                                                                      num_labels=output_size,
-                                                                      output_hidden_states=True)
+                                                                      config=config)
         else:
             self.bert = BertForSequenceClassification.from_pretrained('bert-base-multilingual-cased',
                                                                       num_labels=output_size,
@@ -136,7 +137,7 @@ class BertModel(pl.LightningModule):
         self.log('test-microK', microK,     on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return
 
-    def configure_optimizers(self, lr=3e-5, weight_decay=0.01):
+    def configure_optimizers(self, lr=2e-5, weight_decay=0.01):
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in self.bert.named_parameters()

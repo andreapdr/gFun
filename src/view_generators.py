@@ -16,9 +16,13 @@ This module contains the view generators that take care of computing the view sp
 - View generator (-b): generates document embedding via mBERT model.
 """
 from abc import ABC, abstractmethod
-# from time import time
+import time
 
 import torch
+import transformers
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -31,8 +35,12 @@ from src.models.pl_gru import RecurrentModel
 from src.util.common import TfidfVectorizerMultilingual, _normalize, index
 from src.util.embeddings_manager import MuseLoader, XdotM, wce_matrix
 from src.util.file import create_if_not_exist
-# TODO: (1) add model checkpointing and loading from checkpoint + training on validation after convergence is reached
+from src.util.csv_logger import CSVLog
+from src.models.transformer_nets import *
+from src.util.old_earlystop import OldEarlyStopping
 
+
+transformers.logging.set_verbosity_error()
 
 class ViewGen(ABC):
     """
@@ -239,7 +247,7 @@ class RecurrentGen(ViewGen):
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         self.multilingualIndex.embedding_matrices(self.pretrained, supervised=self.wce)
         self.model = self._init_model()
-        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='rnn', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='rnn', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
 
@@ -285,13 +293,6 @@ class RecurrentGen(ViewGen):
         recurrentDataModule = RecurrentDataModule(self.multilingualIndex, batchsize=self.batch_size, n_jobs=self.n_jobs)
         trainer = Trainer(gradient_clip_val=1e-1, gpus=self.gpus, logger=self.logger, max_epochs=self.nepochs,
                           callbacks=[self.early_stop_callback, self.lr_monitor], checkpoint_callback=False)
-
-        # vanilla_torch_model = torch.load(
-        #     '../_old_checkpoint/gru_viewgen_-rcv1-2_doclist_trByLang1000_teByLang1000_processed_run0.pickle')
-        # self.model.linear0 = vanilla_torch_model.linear0
-        # self.model.linear1 = vanilla_torch_model.linear1
-        # self.model.linear2 = vanilla_torch_model.linear2
-        # self.model.rnn = vanilla_torch_model.rnn
 
         trainer.fit(self.model, datamodule=recurrentDataModule)
         trainer.test(self.model, datamodule=recurrentDataModule)
@@ -349,7 +350,7 @@ class BertGen(ViewGen):
         self.stored_path = stored_path
         self.model = self._init_model()
         self.patience = patience
-        self.logger = TensorBoardLogger(save_dir='../tb_logs', name='bert', default_hp_metric=False)
+        self.logger = TensorBoardLogger(save_dir='tb_logs', name='bert', default_hp_metric=False)
         self.early_stop_callback = EarlyStopping(monitor='val-macroF1', min_delta=0.00,
                                                  patience=self.patience, verbose=False, mode='max')
 
@@ -369,14 +370,19 @@ class BertGen(ViewGen):
         :param ly: dict {lang: target vectors}
         :return: self.
         """
+        if self.stored_path is not None:
+            print('# SKIPPING Fitting BertGen (B) - we have loaded a trained model!')
+            # if we are loading a trained model - avoid training!
+            return self
         print('# Fitting BertGen (B)...')
         create_if_not_exist(self.logger.save_dir)
         self.multilingualIndex.train_val_split(val_prop=0.2, max_val=2000, seed=1)
         bertDataModule = BertDataModule(self.multilingualIndex, batchsize=self.batch_size, max_len=512)
-        trainer = Trainer(gradient_clip_val=1e-1, max_epochs=self.nepochs, gpus=self.gpus,
-                          logger=self.logger, callbacks=[self.early_stop_callback], checkpoint_callback=False)
+        trainer = Trainer(max_epochs=self.nepochs, gpus=self.gpus, logger=self.logger,
+                          callbacks=[self.early_stop_callback], checkpoint_callback=False)  # gradient_clip_val=1e-1
         trainer.fit(self.model, datamodule=bertDataModule)
-        trainer.test(self.model, datamodule=bertDataModule)
+        # trainer.test(self.model, datamodule=bertDataModule)
+        self.model.bert.save_pretrained("checkpoints/bert_secondround")
         return self
 
     def transform(self, lX):
@@ -393,4 +399,105 @@ class BertGen(ViewGen):
 
     def fit_transform(self, lX, ly):
         # we can assume that we have already indexed data for transform() since we are first calling fit()
+        return self.fit(lX, ly).transform(lX)
+
+
+class OldBertGen(ViewGen):
+
+    def __init__(self,
+                 options,
+                 doc_embed_path=None,
+                 patience=10,
+                 checkpoint_dir="checkpoints/bert",
+                 path_to_model=None,
+                 nC=None):
+
+        self.doc_embed_path = doc_embed_path
+        self.patience = patience
+        self.checkpoint_dir = checkpoint_dir
+        self.requires_tfidf = False
+        self.options = options
+        self.path_to_model = path_to_model
+        if self.path_to_model is None:
+            print(f'# Init BertModel (B)...')
+            self.model = get_model(nC).cuda()
+        else:
+            print(f'# Initializing own pre-trained BertModel (B)...')
+            config = BertConfig.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True,
+                                                num_labels=nC)
+            self.model = BertForSequenceClassification.from_pretrained(path_to_model, config=config).cuda()
+
+    def fit(self, lX, ly, lV=None, seed=0, nepochs=25, lr=1e-5, val_epochs=1):
+        if self.path_to_model is not None:
+            print('# SKIPPING Fitting BertGen (B) - we have loaded a trained model!')
+            # if we are loading a trained model - avoid training!
+            return self
+        print(f'# Tokenizing data (B)...')
+        l_tokenized_tr = do_tokenization(lX, max_len=512)
+        l_split_tr, l_split_tr_target, l_split_va, l_split_val_target = get_tr_val_split(l_tokenized_tr,
+                                                                                         ly,
+                                                                                         val_prop=0.2,
+                                                                                         max_val=2000,
+                                                                                         seed=seed)
+
+        tr_dataset = TrainingDataset(l_split_tr, l_split_tr_target)
+        va_dataset = TrainingDataset(l_split_va, l_split_val_target)
+        tr_dataloader = DataLoader(tr_dataset, batch_size=4, shuffle=True)
+        va_dataloader = DataLoader(va_dataset, batch_size=2, shuffle=True)
+
+        print('# Fitting BertGen (B)...')
+        criterion = torch.nn.BCEWithLogitsLoss().cuda()
+        optim = init_optimizer(self.model, lr=lr, weight_decay=0.01)
+        lr_scheduler = StepLR(optim, step_size=25, gamma=0.1)
+        early_stop = OldEarlyStopping(self.model,
+                                      optimizer=optim,
+                                      patience=self.patience,
+                                      checkpoint=self.checkpoint_dir,
+                                      is_bert=True)
+
+        # Training loop
+        logfile_name = 'log_mBert_extractor.csv'
+        method_name = 'mBert'
+        logfile = new_init_logfile_nn(filename=logfile_name, opt=self.options)
+
+        tinit = time()
+        lang_ids = va_dataset.lang_ids
+        nepochs = self.options.nepochs_bert
+        for epoch in range(1, nepochs + 1):
+            print('# Start Training ...')
+            train(self.model, tr_dataloader, epoch, criterion, optim, method_name, tinit, logfile, self.options)
+            lr_scheduler.step()
+
+            # Validation
+            macrof1 = test(self.model, va_dataloader, lang_ids, tinit, epoch, logfile, criterion, 'va')
+            early_stop(macrof1, epoch)
+
+            if early_stop.STOP:
+                print('[early-stop] STOP')
+                break
+
+        model = early_stop.restore_checkpoint()
+        self.model = model.cuda()
+
+        if val_epochs > 0:
+            print(f'running last {val_epochs} training epochs on the validation set')
+            for val_epoch in range(1, val_epochs + 1):
+                train(self.model, va_dataloader, epoch + val_epoch, criterion, optim, method_name, tinit, logfile,
+                      self.options)
+
+        self.fitted = True
+        return self
+
+    def transform(self, lX):
+        assert self.fitted is True, 'Calling transform without any initialized model! - call init first or on init' \
+                                       'pass the "path_to_model" arg.'
+        print('# Obtaining document embeddings from BertGen (B)... ')
+        l_tokenized_X = do_tokenization(lX, max_len=512, verbose=True)
+        feat_dataset = ExtractorDataset(l_tokenized_X)
+        feat_lang_ids = feat_dataset.lang_ids
+        dataloader = DataLoader(feat_dataset, batch_size=64)
+        all_batch_embeddings, id2lang = feature_extractor(dataloader, feat_lang_ids, self.model)
+        return all_batch_embeddings
+
+    def fit_transform(self, lX, ly, lV=None):
         return self.fit(lX, ly).transform(lX)

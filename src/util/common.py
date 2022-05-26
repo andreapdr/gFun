@@ -1,5 +1,8 @@
+import pickle
+
 import numpy as np
 import torch
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize
@@ -382,3 +385,15 @@ def get_method_name(args):
     _dataset_path = args.dataset.split('/')[-1].split('_')
     dataset_id = _dataset_path[0] + _dataset_path[-1]
     return _id, dataset_id
+
+
+def reduce_docs(docs: list, n=250):
+    for d in docs:
+        for k, v in d.items():
+            d[k] = v[:n]
+    return docs
+
+
+def dump_predictions(preds: dict, true: dict):
+    with open(f"result_dumps/res_rcvrun0.pkl", "wb") as f:
+        pickle.dump((preds, true), f)

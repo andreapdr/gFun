@@ -182,8 +182,9 @@ class BertDataModule(RecurrentDataModule):
         if stage == 'fit' or stage is None:
             l_train_raw, l_train_target = self.multilingualIndex.l_train_raw()
             # Debug settings: reducing number of samples
-            # l_train_raw = {l: train[:5] for l, train in l_train_raw.items()}
-            # l_train_target = {l: target[:5] for l, target in l_train_target.items()}
+            # print("[NB: DEBUG SETTING RUNNING WITH LOW NUMBER OF SAMPLES]")
+            # l_train_raw = {l: train[:100] for l, train in l_train_raw.items()}
+            # l_train_target = {l: target[:100] for l, target in l_train_target.items()}
 
             l_train_index = tokenize(l_train_raw, max_len=self.max_len)
             self.training_dataset = RecurrentDataset(l_train_index, l_train_target,
@@ -191,8 +192,9 @@ class BertDataModule(RecurrentDataModule):
 
             l_val_raw, l_val_target = self.multilingualIndex.l_val_raw()
             # Debug settings: reducing number of samples
-            # l_val_raw = {l: train[:5] for l, train in l_val_raw.items()}
-            # l_val_target = {l: target[:5] for l, target in l_val_target.items()}
+            # print("[NB: DEBUG SETTING RUNNING WITH LOW NUMBER OF SAMPLES]")
+            # l_val_raw = {l: train[:50] for l, train in l_val_raw.items()}
+            # l_val_target = {l: target[:50] for l, target in l_val_target.items()}
 
             l_val_index = tokenize(l_val_raw, max_len=self.max_len)
             self.val_dataset = RecurrentDataset(l_val_index, l_val_target,

@@ -50,6 +50,27 @@ def accuracy(cell):
     return (cell.tp + cell.tn)*1.0 / (cell.tp + cell.fp + cell.fn + cell.tn)
 
 
+def precision(cell):
+    num = cell.tp
+    den = cell.tp + cell.fp
+    if den > 0:
+        return num/den
+    return 1.0
+    num = cell.tn
+    den = cell.tn + cell.fn
+    return num/den
+
+
+def recall(cell):
+    num = cell.tp
+    den = cell.tp + cell.fn
+    if den > 0:
+        return num/den
+    return 1.0
+    num = cell.tn
+    den = cell.tn + cell.fp
+    return num/den
+
 def f1(cell):
     num = 2.0 * cell.tp
     den = 2.0 * cell.tp + cell.fp + cell.fn
@@ -130,6 +151,22 @@ def micro_average(true_labels, predicted_labels, metric, metric_statistics=hard_
         accum = accum + other
 
     return metric(accum)
+
+
+def macroP(true_labels, predicted_labels):
+    return macro_average(true_labels, predicted_labels, precision)
+
+
+def microP(true_labels, predicted_labels):
+    return micro_average(true_labels, predicted_labels, precision)
+
+
+def macroR(true_labels, predicted_labels):
+    return macro_average(true_labels, predicted_labels, recall)
+
+
+def microR(true_labels, predicted_labels):
+    return micro_average(true_labels, predicted_labels, recall)
 
 
 # true_labels and predicted_labels are two matrices in sklearn.preprocessing.MultiLabelBinarizer format

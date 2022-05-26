@@ -2,10 +2,11 @@ from argparse import ArgumentParser
 
 from src.data.dataset_builder import MultilingualDataset
 from src.funnelling import *
-from src.util.common import MultilingualIndex, get_params, get_method_name
+from src.util.common import MultilingualIndex, get_params, get_method_name, dump_predictions
 from src.util.evaluation import evaluate
 from src.util.results_csv import CSVlog
 from src.view_generators import *
+import time
 
 
 def main(args):
@@ -15,11 +16,10 @@ def main(args):
     print('Running generalized funnelling...')
 
     data = MultilingualDataset.load(args.dataset)
-    # data.set_view(languages=['it', 'da'])
+    data.set_view(languages=['it'])
     data.show_dimensions()
     lX, ly = data.training()
     lXte, lyte = data.test()
-
     # Init multilingualIndex - mandatory when deploying Neural View Generators...
     if args.gru_embedder or args.bert_embedder:
         multilingualIndex = MultilingualIndex()
@@ -47,9 +47,18 @@ def main(args):
         embedder_list.append(rnnEmbedder)
 
     if args.bert_embedder:
+        """
         bertEmbedder = BertGen(multilingualIndex, batch_size=args.batch_bert, nepochs=args.nepochs_bert,
-                               patience=args.patience_bert, gpus=args.gpus, n_jobs=args.n_jobs)
+                               patience=args.patience_bert, gpus=args.gpus, n_jobs=args.n_jobs,
+                               stored_path=None)
+                               # stored_path="../vanilla_gfun/hug_checkpoint/second_round/jrc_run0/pytorch_model.bin")
         embedder_list.append(bertEmbedder)
+        """
+
+        mbert = OldBertGen(path_to_model=None,
+                           nC=data.num_categories(),
+                           options=args)
+        embedder_list.append(mbert)
 
     # Init DocEmbedderList (i.e., first-tier learners or view generators) and metaclassifier
     docEmbedders = DocEmbedderList(embedder_list=embedder_list, probabilistic=True)
@@ -71,6 +80,7 @@ def main(args):
     print('\n[Testing Generalized Funnelling]')
     time_te = time.time()
     ly_ = gfun.predict(lXte)
+    dump_predictions(preds=ly_, true=lyte)
     l_eval = evaluate(ly_true=lyte, ly_pred=ly_, n_jobs=args.n_jobs)
     time_te = round(time.time() - time_te, 3)
     print(f'Testing completed in {time_te} seconds!')
@@ -80,9 +90,9 @@ def main(args):
     results = CSVlog(args.csv_dir)
     metrics = []
     for lang in lXte.keys():
-        macrof1, microf1, macrok, microk = l_eval[lang]
-        metrics.append([macrof1, microf1, macrok, microk])
-        print(f'Lang {lang}: macro-F1 = {macrof1:.3f} micro-F1 = {microf1:.3f}')
+        macrof1, microf1, macrok, microk, macrop, microp, macror, micror = l_eval[lang]
+        metrics.append([macrof1, microf1, macrok, microk, macrop, microp, macror, micror])
+        print(f'Lang {lang}: macro-F1={macrof1:.3f} micro-F1={microf1:.3f} macro-P={macrop:.3f} micro-P={microp:.3f}')
         if results is not None:
             _id, _dataset = get_method_name(args)
             results.add_row(method='gfun',
@@ -99,8 +109,12 @@ def main(args):
                             microf1=microf1,
                             macrok=macrok,
                             microk=microk,
+                            macrop=macrop,
+                            microp=microp,
+                            macror=macror,
+                            micror=micror,
                             notes='')
-    print('Averages: MF1, mF1, MK, mK', np.round(np.mean(np.array(metrics), axis=0), 3))
+    print('Averages: MF1, mF1, MK, mK, MP, mP, MR, mR', np.round(np.mean(np.array(metrics), axis=0), 3))
 
     overall_time = round(time.time() - time_init, 3)
     exit(f'\nExecuted in: {overall_time} seconds!')
@@ -138,6 +152,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--c_optimize', dest='optimc', action='store_true',
                         help='Optimize SVMs C hyperparameter at metaclassifier level',
                         default=False)
+
+    parser.add_argument('-s', '--seed', dest='seed', type=int, help='set RNG seed',
+                        default=0)
 
     parser.add_argument('-j', '--n_jobs', dest='n_jobs', type=int, metavar='',
                         help='number of parallel jobs (default is -1, all)',
